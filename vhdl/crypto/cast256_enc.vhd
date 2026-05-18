@@ -1,22 +1,24 @@
--- =============================================================================
--- cast256_enc.vhd
--- CAST-256 encryption core (RFC 2612 Section 2.5).
---
--- Encrypts a single 128-bit plaintext block using the 12 subkey sets
--- produced by cast256_ks.  The core applies 6 forward quad-rounds (Q)
--- followed by 6 reverse quad-rounds (QBAR), one round per clock cycle,
--- for a total latency of 12 clock cycles after 'start' is asserted.
---
--- Interface
---   aclk        : system clock (rising-edge triggered)
---   aresetn     : synchronous active-low reset
---   plaintext   : 128-bit input block, sampled on the rising edge of 'start'
---   kr_i        : rotation subkeys from cast256_ks (must be valid before start)
---   km_i        : masking  subkeys from cast256_ks (must be valid before start)
---   start       : pulse high for one cycle to begin encryption
---   ciphertext  : 128-bit result, valid when done='1'
---   done        : high when ciphertext is valid; falls when 'start' re-fires
--- =============================================================================
+-- ┌──────────────────────────────────────────────────────────────────┐
+-- │ cast256_enc                                                      │
+-- │                                                                  │
+-- │ CAST-256 encryption core (RFC 2612 Section 2.5).                 │
+-- │ Encrypts a single 128-bit plaintext block using the 12 subkey    │
+-- │ sets produced by cast256_ks.                                     │
+-- │                                                                  │
+-- │ The core applies 6 forward quad-rounds (Q) followed by 6 reverse │
+-- │ quad-rounds (QBAR), one round per clock cycle — total latency of │
+-- │ 12 cycles after 'start' is asserted.                             │
+-- │                                                                  │
+-- │ Interface :                                                      │
+-- │   - aclk       : system clock (rising-edge triggered)            │
+-- │   - aresetn    : synchronous active-low reset                    │
+-- │   - plaintext  : 128-bit input block, sampled on rising 'start'  │
+-- │   - kr_i       : rotation subkeys from cast256_ks                │
+-- │   - km_i       : masking subkeys from cast256_ks                 │
+-- │   - start      : pulse high for one cycle to begin encryption    │
+-- │   - ciphertext : 128-bit result, valid when done='1'             │
+-- │   - done       : high when ciphertext is valid                   │
+-- └──────────────────────────────────────────────────────────────────┘
 
 library ieee;
 use ieee.std_logic_1164.all;
@@ -38,46 +40,45 @@ end entity cast256_enc;
 
 architecture rtl of cast256_enc is
 
-    -- -------------------------------------------------------------------------
-    -- State machine
-    -- -------------------------------------------------------------------------
+    -- ┌─────────────────────────────────┐
+    -- │ State machine                   │
+    -- └─────────────────────────────────┘
     type enc_state_t is (IDLE, RUNNING, DONE);
     signal state : enc_state_t;
 
-    -- -------------------------------------------------------------------------
-    -- Internal registers
-    -- -------------------------------------------------------------------------
-    signal beta_reg  : beta_t;
-    signal counter   : integer range 0 to 11;
+    -- ┌─────────────────────────────────┐
+    -- │ Internal registers              │
+    -- └─────────────────────────────────┘
+    signal beta_reg : beta_t;
+    signal counter  : integer range 0 to 11;
 
 begin
 
-    -- -------------------------------------------------------------------------
-    -- Ciphertext output: reassemble words A..D as one vector (A = MSW)
-    -- -------------------------------------------------------------------------
+    -- ── Ciphertext output ─────────────────────────────────────────────
+    -- Reassemble words A..D as one vector (A = MSW).
     ciphertext <= beta_reg.a & beta_reg.b & beta_reg.c & beta_reg.d;
 
-    -- -------------------------------------------------------------------------
-    -- Clocked FSM
-    -- -------------------------------------------------------------------------
+    -- ── Clocked FSM ───────────────────────────────────────────────────
     process(aclk) is
         variable bv : beta_t;   -- local working copy of the data state
     begin
         if rising_edge(aclk) then
             if aresetn = '0' then
-                state        <= IDLE;
-                counter      <= 0;
-                done         <= '0';
-                beta_reg.a   <= (others => '0');
-                beta_reg.b   <= (others => '0');
-                beta_reg.c   <= (others => '0');
-                beta_reg.d   <= (others => '0');
+
+                -- ── Synchronous reset ─────────────────────────────────
+                state      <= IDLE;
+                counter    <= 0;
+                done       <= '0';
+                beta_reg.a <= (others => '0');
+                beta_reg.b <= (others => '0');
+                beta_reg.c <= (others => '0');
+                beta_reg.d <= (others => '0');
+
             else
                 case state is
 
-                    -- ---------------------------------------------------------
-                    -- IDLE: wait for start pulse, then latch plaintext into BETA
-                    -- ---------------------------------------------------------
+                    -- ── IDLE ──────────────────────────────────────────
+                    -- Wait for start pulse, then latch plaintext into BETA.
                     when IDLE =>
                         done <= '0';
                         if start = '1' then
@@ -90,11 +91,10 @@ begin
                             state      <= RUNNING;
                         end if;
 
-                    -- ---------------------------------------------------------
-                    -- RUNNING: one quad-round per cycle.
-                    -- counter 0..5  → forward Q rounds  (q_round)
-                    -- counter 6..11 → reverse QBAR rounds (qbar_round)
-                    -- ---------------------------------------------------------
+                    -- ── RUNNING ───────────────────────────────────────
+                    -- One quad-round per cycle :
+                    --   counter 0..5  → forward Q rounds   (q_round)
+                    --   counter 6..11 → reverse QBAR rounds (qbar_round)
                     when RUNNING =>
                         bv := beta_reg;
 
@@ -112,9 +112,8 @@ begin
                             counter <= counter + 1;
                         end if;
 
-                    -- ---------------------------------------------------------
-                    -- DONE: ciphertext valid; hold until re-triggered
-                    -- ---------------------------------------------------------
+                    -- ── DONE ──────────────────────────────────────────
+                    -- Ciphertext valid; hold until re-triggered.
                     when DONE =>
                         done <= '1';
                         if start = '1' then

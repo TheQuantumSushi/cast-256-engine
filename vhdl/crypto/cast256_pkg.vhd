@@ -1,22 +1,22 @@
--- =============================================================================
--- cast256_pkg.vhd
--- Package for the CAST-256 block cipher (RFC 2612).
--- Contains all types, S-box constants, key-schedule constants, and the
--- pure functions used by both the key schedule and the encryption core.
--- =============================================================================
+-- ┌──────────────────────────────────────────────────────────────────┐
+-- │ cast256_pkg                                                      │
+-- │                                                                  │
+-- │ Package for the CAST-256 block cipher (RFC 2612).                │
+-- │ Contains all types, S-box constants, key-schedule constants,     │
+-- │ and the pure functions used by both the key schedule and the     │
+-- │ encryption core.                                                 │
+-- └──────────────────────────────────────────────────────────────────┘
 
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
--- -----------------------------------------------------------------------------
--- Package declaration
--- -----------------------------------------------------------------------------
+-- ┌─────────────────────────────────┐
+-- │ Package declaration             │
+-- └─────────────────────────────────┘
 package cast256_pkg is
 
-    -- -------------------------------------------------------------------------
-    -- Base types
-    -- -------------------------------------------------------------------------
+    -- ── Base types ────────────────────────────────────────────────────
     subtype word32_t is std_ulogic_vector(31 downto 0);
     subtype word5_t  is std_ulogic_vector(4  downto 0);
 
@@ -33,21 +33,22 @@ package cast256_pkg is
         a, b, c, d : word32_t;
     end record;
 
-    -- Subkey arrays for 12 rounds (4 rotation keys + 4 masking keys per round)
+    -- ── Subkey arrays ─────────────────────────────────────────────────
+    -- 12 rounds, 4 rotation keys + 4 masking keys per round
     type kr_set_t   is array(0 to 3) of word5_t;
     type km_set_t   is array(0 to 3) of word32_t;
     type kr_array_t is array(0 to 11) of kr_set_t;
     type km_array_t is array(0 to 11) of km_set_t;
 
-    -- Key-schedule round constants Tm / Tr (24 octaves x 8 values each)
+    -- ── Key-schedule round constants ──────────────────────────────────
+    -- 24 octaves x 8 values each (Tm masking, Tr rotation)
     type tm_row_t   is array(0 to 7) of word32_t;
     type tr_row_t   is array(0 to 7) of word5_t;
     type tm_array_t is array(0 to 23) of tm_row_t;
     type tr_array_t is array(0 to 23) of tr_row_t;
 
-    -- -------------------------------------------------------------------------
-    -- Constant declarations (values deferred to package body)
-    -- -------------------------------------------------------------------------
+    -- ── Constant declarations ─────────────────────────────────────────
+    -- Values deferred to package body
     constant SBOX1 : sbox_t;
     constant SBOX2 : sbox_t;
     constant SBOX3 : sbox_t;
@@ -56,9 +57,7 @@ package cast256_pkg is
     constant TM : tm_array_t;   -- 96 masking constants derived from sqrt(2)
     constant TR : tr_array_t;   -- 96 rotation constants derived from sqrt(3)
 
-    -- -------------------------------------------------------------------------
-    -- Function prototypes
-    -- -------------------------------------------------------------------------
+    -- ── Function prototypes ───────────────────────────────────────────
     function rotate_left32(val : word32_t; n   : word5_t)  return word32_t;
 
     -- Round functions (Type 1/2/3 from RFC 2612 Section 2.1)
@@ -78,15 +77,13 @@ package cast256_pkg is
 end package cast256_pkg;
 
 
--- -----------------------------------------------------------------------------
--- Package body: constant values and function implementations
--- -----------------------------------------------------------------------------
+-- ┌─────────────────────────────────┐
+-- │ Package body                    │
+-- └─────────────────────────────────┘
 package body cast256_pkg is
 
-    -- =========================================================================
-    -- S-box S1 (RFC 2612 Section 2.1.1)
+    -- ── S-box S1 (RFC 2612 Section 2.1.1) ────────────────────────────
     -- 256 entries, read left-to-right, top-to-bottom
-    -- =========================================================================
     constant SBOX1 : sbox_t := (
         x"30fb40d4", x"9fa0ff0b", x"6beccd2f", x"3f258c7a",
         x"1e213f2f", x"9c004dd3", x"6003e540", x"cf9fc949",
@@ -154,9 +151,7 @@ package body cast256_pkg is
         x"427b169c", x"5ac9f049", x"dd8f0f00", x"5c8165bf"
     );
 
-    -- =========================================================================
-    -- S-box S2
-    -- =========================================================================
+    -- ── S-box S2 ──────────────────────────────────────────────────────
     constant SBOX2 : sbox_t := (
         x"1f201094", x"ef0ba75b", x"69e3cf7e", x"393f4380",
         x"fe61cf7a", x"eec5207a", x"55889c94", x"72fc0651",
@@ -224,9 +219,7 @@ package body cast256_pkg is
         x"7160a539", x"73bfbe70", x"83877605", x"4523ecf1"
     );
 
-    -- =========================================================================
-    -- S-box S3
-    -- =========================================================================
+    -- ── S-box S3 ──────────────────────────────────────────────────────
     constant SBOX3 : sbox_t := (
         x"8defc240", x"25fa5d9f", x"eb903dbf", x"e810c907",
         x"47607fff", x"369fe44b", x"8c1fc644", x"aececa90",
@@ -294,9 +287,7 @@ package body cast256_pkg is
         x"dfef4636", x"a133c501", x"e9d3531c", x"ee353783"
     );
 
-    -- =========================================================================
-    -- S-box S4
-    -- =========================================================================
+    -- ── S-box S4 ──────────────────────────────────────────────────────
     constant SBOX4 : sbox_t := (
         x"9db30420", x"1fb6e9de", x"a7be7bef", x"d273a298",
         x"4a4f7bdb", x"64ad8c57", x"85510443", x"fa020ed1",
@@ -364,12 +355,10 @@ package body cast256_pkg is
         x"13ecf0b0", x"d3ffb372", x"3f85c5c1", x"0aef7ed2"
     );
 
-    -- =========================================================================
-    -- Tm / Tr computation
-    -- Tm: masking constants, seeded from Cm = 2^30*sqrt(2) = 0x5A827999
-    --     incremented by Mm = 2^30*sqrt(3) = 0x6ED9EBA1 each step
-    -- Tr: rotation constants, seeded from Cr = 19, incremented by Mr = 17 mod 32
-    -- =========================================================================
+    -- ── Tm / Tr computation ───────────────────────────────────────────
+    -- Tm : masking constants, seeded from Cm = 2^30*sqrt(2) = 0x5A827999
+    --      incremented by Mm = 2^30*sqrt(3) = 0x6ED9EBA1 each step
+    -- Tr : rotation constants, seeded from Cr = 19, incremented by Mr = 17 mod 32
     function compute_tm return tm_array_t is
         variable result : tm_array_t;
         variable cm     : unsigned(31 downto 0) := x"5A827999";
@@ -400,11 +389,20 @@ package body cast256_pkg is
     constant TM : tm_array_t := compute_tm;
     constant TR : tr_array_t := compute_tr;
 
-    -- =========================================================================
-    -- rotate_left32
-    -- Rotates a 32-bit value left by n positions (n in 0..31).
-    -- Implemented as shift_left OR shift_right to avoid variable-range slicing.
-    -- =========================================================================
+    -- ┌──────────────────────────────────────────────────────────────────┐
+    -- │ rotate_left32                                                    │
+    -- │                                                                  │
+    -- │ Rotates a 32-bit value left by n positions (n in 0..31).         │
+    -- │ Implemented as shift_left OR shift_right to avoid variable-range │
+    -- │ slicing.                                                         │
+    -- │                                                                  │
+    -- │ Args :                                                           │
+    -- │   - val [word32_t] : input value to rotate                       │
+    -- │   - n   [word5_t]  : rotation amount (0..31)                     │
+    -- │                                                                  │
+    -- │ Returns :                                                        │
+    -- │   - word32_t : rotated value                                     │
+    -- └──────────────────────────────────────────────────────────────────┘
     function rotate_left32(val : word32_t; n : word5_t) return word32_t is
         variable ni : integer range 0 to 31;
         variable uv : unsigned(31 downto 0);
@@ -417,13 +415,22 @@ package body cast256_pkg is
         return std_ulogic_vector(shift_left(uv, ni) or shift_right(uv, 32 - ni));
     end function;
 
-    -- =========================================================================
-    -- Round function f1 (Type 1)
-    -- I = ((Km + D) <<< Kr)
-    -- O = ((S1[Ia] ^ S2[Ib]) - S3[Ic]) + S4[Id]
-    -- =========================================================================
+    -- ┌──────────────────────────────────────────────────────────────────┐
+    -- │ f1  —  Round function Type 1 (RFC 2612 Section 2.1)              │
+    -- │                                                                  │
+    -- │   I = ((Km + D) <<< Kr)                                          │
+    -- │   O = ((S1[Ia] ^ S2[Ib]) - S3[Ic]) + S4[Id]                      │
+    -- │                                                                  │
+    -- │ Args :                                                           │
+    -- │   - d  [word32_t] : data input                                   │
+    -- │   - kr [word5_t]  : rotation subkey                              │
+    -- │   - km [word32_t] : masking subkey                               │
+    -- │                                                                  │
+    -- │ Returns :                                                        │
+    -- │   - word32_t : round function output                             │
+    -- └──────────────────────────────────────────────────────────────────┘
     function f1(d : word32_t; kr : word5_t; km : word32_t) return word32_t is
-        variable i_val        : word32_t;
+        variable i_val          : word32_t;
         variable ia, ib, ic, id : integer range 0 to 255;
         variable s1v, s2v, s3v, s4v : unsigned(31 downto 0);
     begin
@@ -439,13 +446,22 @@ package body cast256_pkg is
         return std_ulogic_vector((s1v xor s2v) - s3v + s4v);
     end function;
 
-    -- =========================================================================
-    -- Round function f2 (Type 2)
-    -- I = ((Km ^ D) <<< Kr)
-    -- O = ((S1[Ia] - S2[Ib]) + S3[Ic]) ^ S4[Id]
-    -- =========================================================================
+    -- ┌──────────────────────────────────────────────────────────────────┐
+    -- │ f2  —  Round function Type 2 (RFC 2612 Section 2.1)              │
+    -- │                                                                  │
+    -- │   I = ((Km ^ D) <<< Kr)                                          │
+    -- │   O = ((S1[Ia] - S2[Ib]) + S3[Ic]) ^ S4[Id]                      │
+    -- │                                                                  │
+    -- │ Args :                                                           │
+    -- │   - d  [word32_t] : data input                                   │
+    -- │   - kr [word5_t]  : rotation subkey                              │
+    -- │   - km [word32_t] : masking subkey                               │
+    -- │                                                                  │
+    -- │ Returns :                                                        │
+    -- │   - word32_t : round function output                             │
+    -- └──────────────────────────────────────────────────────────────────┘
     function f2(d : word32_t; kr : word5_t; km : word32_t) return word32_t is
-        variable i_val        : word32_t;
+        variable i_val          : word32_t;
         variable ia, ib, ic, id : integer range 0 to 255;
         variable s1v, s2v, s3v, s4v : unsigned(31 downto 0);
     begin
@@ -461,13 +477,22 @@ package body cast256_pkg is
         return std_ulogic_vector((s1v - s2v + s3v) xor s4v);
     end function;
 
-    -- =========================================================================
-    -- Round function f3 (Type 3)
-    -- I = ((Km - D) <<< Kr)
-    -- O = ((S1[Ia] + S2[Ib]) ^ S3[Ic]) - S4[Id]
-    -- =========================================================================
+    -- ┌──────────────────────────────────────────────────────────────────┐
+    -- │ f3  —  Round function Type 3 (RFC 2612 Section 2.1)              │
+    -- │                                                                  │
+    -- │   I = ((Km - D) <<< Kr)                                          │
+    -- │   O = ((S1[Ia] + S2[Ib]) ^ S3[Ic]) - S4[Id]                      │
+    -- │                                                                  │
+    -- │ Args :                                                           │
+    -- │   - d  [word32_t] : data input                                   │
+    -- │   - kr [word5_t]  : rotation subkey                              │
+    -- │   - km [word32_t] : masking subkey                               │
+    -- │                                                                  │
+    -- │ Returns :                                                        │
+    -- │   - word32_t : round function output                             │
+    -- └──────────────────────────────────────────────────────────────────┘
     function f3(d : word32_t; kr : word5_t; km : word32_t) return word32_t is
-        variable i_val        : word32_t;
+        variable i_val          : word32_t;
         variable ia, ib, ic, id : integer range 0 to 255;
         variable s1v, s2v, s3v, s4v : unsigned(31 downto 0);
     begin
@@ -483,13 +508,21 @@ package body cast256_pkg is
         return std_ulogic_vector(((s1v + s2v) xor s3v) - s4v);
     end function;
 
-    -- =========================================================================
-    -- w_octave
-    -- One W-octave step of the key schedule (RFC 2612 Section 2.4).
-    -- Updates all 8 KAPPA words using round functions and Tm/Tr constants for
-    -- octave index i. Each step in the octave depends on the previous update,
-    -- so variables are used to propagate changes within the same function call.
-    -- =========================================================================
+    -- ┌──────────────────────────────────────────────────────────────────┐
+    -- │ w_octave                                                         │
+    -- │                                                                  │
+    -- │ One W-octave step of the key schedule (RFC 2612 Section 2.4).    │
+    -- │ Updates all 8 KAPPA words using round functions and Tm/Tr        │
+    -- │ constants for octave index i. Each step depends on the previous  │
+    -- │ update, so variables propagate changes within the same call.     │
+    -- │                                                                  │
+    -- │ Args :                                                           │
+    -- │   - kap [kappa_t]          : current KAPPA state                 │
+    -- │   - i   [integer 0 to 23]  : octave index                        │
+    -- │                                                                  │
+    -- │ Returns :                                                        │
+    -- │   - kappa_t : updated KAPPA state                                │
+    -- └──────────────────────────────────────────────────────────────────┘
     function w_octave(kap : kappa_t; i : integer range 0 to 23) return kappa_t is
         variable k : kappa_t;
     begin
@@ -505,13 +538,23 @@ package body cast256_pkg is
         return k;
     end function;
 
-    -- =========================================================================
-    -- q_round  — Forward quad-round Q(i)
-    -- C = C ^ f1(D, Kr0(i), Km0(i))
-    -- B = B ^ f2(C, Kr1(i), Km1(i))
-    -- A = A ^ f3(B, Kr2(i), Km2(i))
-    -- D = D ^ f1(A, Kr3(i), Km3(i))
-    -- =========================================================================
+    -- ┌──────────────────────────────────────────────────────────────────┐
+    -- │ q_round  —  Forward quad-round Q(i)                              │
+    -- │                                                                  │
+    -- │   C = C ^ f1(D, Kr0(i), Km0(i))                                  │
+    -- │   B = B ^ f2(C, Kr1(i), Km1(i))                                  │
+    -- │   A = A ^ f3(B, Kr2(i), Km2(i))                                  │
+    -- │   D = D ^ f1(A, Kr3(i), Km3(i))                                  │
+    -- │                                                                  │
+    -- │ Args :                                                           │
+    -- │   - b  [beta_t]             : current data state (A,B,C,D)       │
+    -- │   - i  [integer 0 to 11]    : round index                        │
+    -- │   - kr [kr_array_t]         : rotation subkey array              │
+    -- │   - km [km_array_t]         : masking subkey array               │
+    -- │                                                                  │
+    -- │ Returns :                                                        │
+    -- │   - beta_t : data state after the forward quad-round             │
+    -- └──────────────────────────────────────────────────────────────────┘
     function q_round(b : beta_t; i : integer range 0 to 11;
                      kr : kr_array_t; km : km_array_t) return beta_t is
         variable bv : beta_t;
@@ -524,13 +567,23 @@ package body cast256_pkg is
         return bv;
     end function;
 
-    -- =========================================================================
-    -- qbar_round  — Reverse quad-round QBAR(i)
-    -- D = D ^ f1(A, Kr3(i), Km3(i))
-    -- A = A ^ f3(B, Kr2(i), Km2(i))
-    -- B = B ^ f2(C, Kr1(i), Km1(i))
-    -- C = C ^ f1(D, Kr0(i), Km0(i))
-    -- =========================================================================
+    -- ┌──────────────────────────────────────────────────────────────────┐
+    -- │ qbar_round  —  Reverse quad-round QBAR(i)                        │
+    -- │                                                                  │
+    -- │   D = D ^ f1(A, Kr3(i), Km3(i))                                  │
+    -- │   A = A ^ f3(B, Kr2(i), Km2(i))                                  │
+    -- │   B = B ^ f2(C, Kr1(i), Km1(i))                                  │
+    -- │   C = C ^ f1(D, Kr0(i), Km0(i))                                  │
+    -- │                                                                  │
+    -- │ Args :                                                           │
+    -- │   - b  [beta_t]             : current data state (A,B,C,D)       │
+    -- │   - i  [integer 0 to 11]    : round index                        │
+    -- │   - kr [kr_array_t]         : rotation subkey array              │
+    -- │   - km [km_array_t]         : masking subkey array               │
+    -- │                                                                  │
+    -- │ Returns :                                                        │
+    -- │   - beta_t : data state after the reverse quad-round             │
+    -- └──────────────────────────────────────────────────────────────────┘
     function qbar_round(b : beta_t; i : integer range 0 to 11;
                         kr : kr_array_t; km : km_array_t) return beta_t is
         variable bv : beta_t;

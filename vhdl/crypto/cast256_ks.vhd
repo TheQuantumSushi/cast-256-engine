@@ -1,22 +1,25 @@
--- =============================================================================
--- cast256_ks.vhd
--- CAST-256 key schedule (RFC 2612 Section 2.4).
---
--- Derives 12 sets of subkeys from a 256-bit secret key.
--- Each set contains 4 x 5-bit rotation keys (Kr) and 4 x 32-bit masking
--- keys (Km).  The schedule runs 24 W-octaves (2 per clock cycle), producing
--- one subkey set per cycle, for a total latency of 12 clock cycles after
--- 'start' is asserted.
---
--- Interface
---   aclk        : system clock (rising-edge triggered)
---   aresetn     : synchronous active-low reset
---   key         : 256-bit secret key, sampled on the rising edge of 'start'
---   start       : pulse high for one cycle to begin a new key schedule
---   done        : high when subkeys are valid; falls when 'start' is re-asserted
---   kr_o        : 12 x {Kr0..Kr3} rotation-key output (valid when done='1')
---   km_o        : 12 x {Km0..Km3} masking-key output  (valid when done='1')
--- =============================================================================
+-- ┌──────────────────────────────────────────────────────────────────┐
+-- │ cast256_ks                                                       │
+-- │                                                                  │
+-- │ CAST-256 key schedule (RFC 2612 Section 2.4).                    │
+-- │ Derives 12 sets of subkeys from a 256-bit secret key.            │
+-- │ Each set contains 4 x 5-bit rotation keys (Kr) and 4 x 32-bit    │
+-- │ masking keys (Km).                                               │
+-- │                                                                  │
+-- │ The schedule runs 24 W-octaves (2 per clock cycle), producing    │
+-- │ one subkey set per cycle — total latency of 12 cycles after      │
+-- │ 'start' is asserted.                                             │
+-- │                                                                  │
+-- │ Interface :                                                      │
+-- │   - aclk    : system clock (rising-edge triggered)               │
+-- │   - aresetn : synchronous active-low reset                       │
+-- │   - key     : 256-bit secret key, sampled on rising edge of      │
+-- │               'start'                                            │
+-- │   - start   : pulse high for one cycle to begin a new schedule   │
+-- │   - done    : high when subkeys are valid; falls on re-trigger   │
+-- │   - kr_o    : 12 x {Kr0..Kr3} rotation-key output                │
+-- │   - km_o    : 12 x {Km0..Km3} masking-key output                 │
+-- └──────────────────────────────────────────────────────────────────┘
 
 library ieee;
 use ieee.std_logic_1164.all;
@@ -37,15 +40,15 @@ end entity cast256_ks;
 
 architecture rtl of cast256_ks is
 
-    -- -------------------------------------------------------------------------
-    -- State machine
-    -- -------------------------------------------------------------------------
+    -- ┌─────────────────────────────────┐
+    -- │ State machine                   │
+    -- └─────────────────────────────────┘
     type ks_state_t is (IDLE, RUNNING, DONE);
     signal state : ks_state_t;
 
-    -- -------------------------------------------------------------------------
-    -- Internal registers
-    -- -------------------------------------------------------------------------
+    -- ┌─────────────────────────────────┐
+    -- │ Internal registers              │
+    -- └─────────────────────────────────┘
     signal kappa_reg : kappa_t;
     signal kr_reg    : kr_array_t;
     signal km_reg    : km_array_t;
@@ -53,21 +56,18 @@ architecture rtl of cast256_ks is
 
 begin
 
-    -- -------------------------------------------------------------------------
-    -- Drive outputs directly from registers
-    -- -------------------------------------------------------------------------
+    -- ── Drive outputs from registers ─────────────────────────────────
     kr_o <= kr_reg;
     km_o <= km_reg;
 
-    -- -------------------------------------------------------------------------
-    -- Clocked FSM
-    -- -------------------------------------------------------------------------
+    -- ── Clocked FSM ───────────────────────────────────────────────────
     process(aclk) is
         variable k : kappa_t;   -- local working copy of kappa
     begin
         if rising_edge(aclk) then
             if aresetn = '0' then
-                -- Synchronous reset
+
+                -- ── Synchronous reset ─────────────────────────────────
                 state       <= IDLE;
                 counter     <= 0;
                 done        <= '0';
@@ -85,12 +85,12 @@ begin
                         km_reg(i)(j) <= (others => '0');
                     end loop;
                 end loop;
+
             else
                 case state is
 
-                    -- ---------------------------------------------------------
-                    -- IDLE: wait for a start pulse, then latch the key
-                    -- ---------------------------------------------------------
+                    -- ── IDLE ──────────────────────────────────────────
+                    -- Wait for a start pulse, then latch the key.
                     when IDLE =>
                         done <= '0';
                         if start = '1' then
@@ -107,21 +107,17 @@ begin
                             state       <= RUNNING;
                         end if;
 
-                    -- ---------------------------------------------------------
-                    -- RUNNING: execute one pair of W-octaves per cycle.
+                    -- ── RUNNING ───────────────────────────────────────
+                    -- Execute one pair of W-octaves per cycle.
                     -- counter runs 0..11 → octave pairs W(0,1)..W(22,23).
-                    -- Subkeys for round 'counter' are extracted after the pair.
-                    -- ---------------------------------------------------------
+                    -- Subkeys for round 'counter' extracted after each pair.
                     when RUNNING =>
                         -- Copy signal into variable so updates are immediate
                         k := kappa_reg;
 
-                        -- W-octave 2*counter
                         k := w_octave(k, 2 * counter);
-                        -- W-octave 2*counter + 1
                         k := w_octave(k, 2 * counter + 1);
 
-                        -- Extract subkeys for round 'counter'
                         -- Kr(i) = { 5LSB(A), 5LSB(C), 5LSB(E), 5LSB(G) }
                         -- Km(i) = { H,       F,       D,       B       }
                         kr_reg(counter)(0) <= k.a(4 downto 0);
@@ -133,7 +129,6 @@ begin
                         km_reg(counter)(2) <= k.d;
                         km_reg(counter)(3) <= k.b;
 
-                        -- Save updated KAPPA back to register
                         kappa_reg <= k;
 
                         if counter = 11 then
@@ -142,13 +137,12 @@ begin
                             counter <= counter + 1;
                         end if;
 
-                    -- ---------------------------------------------------------
-                    -- DONE: subkeys are valid; hold done until re-triggered
-                    -- ---------------------------------------------------------
+                    -- ── DONE ──────────────────────────────────────────
+                    -- Subkeys are valid; hold done until re-triggered.
                     when DONE =>
                         done <= '1';
                         if start = '1' then
-                            -- New key: latch immediately and restart
+                            -- New key : latch immediately and restart
                             kappa_reg.a <= key(255 downto 224);
                             kappa_reg.b <= key(223 downto 192);
                             kappa_reg.c <= key(191 downto 160);
