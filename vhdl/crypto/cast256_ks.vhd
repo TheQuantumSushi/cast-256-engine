@@ -43,7 +43,7 @@ architecture rtl of cast256_ks is
     -- ┌─────────────────────────────────┐
     -- │ State machine                   │
     -- └─────────────────────────────────┘
-    type ks_state_t is (IDLE, RUNNING, DONE);
+    type ks_state_t is (IDLE, RUNNING, ST_DONE);
     signal state : ks_state_t;
 
     -- ┌─────────────────────────────────┐
@@ -132,14 +132,14 @@ begin
                         kappa_reg <= k;
 
                         if counter = 11 then
-                            state <= DONE;
+                            state <= ST_DONE;
                         else
                             counter <= counter + 1;
                         end if;
 
-                    -- ── DONE ──────────────────────────────────────────
+                    -- ── ST_DONE ───────────────────────────────────────
                     -- Subkeys are valid; hold done until re-triggered.
-                    when DONE =>
+                    when ST_DONE =>
                         done <= '1';
                         if start = '1' then
                             -- New key : latch immediately and restart

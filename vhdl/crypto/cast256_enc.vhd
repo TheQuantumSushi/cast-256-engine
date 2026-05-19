@@ -43,7 +43,7 @@ architecture rtl of cast256_enc is
     -- ┌─────────────────────────────────┐
     -- │ State machine                   │
     -- └─────────────────────────────────┘
-    type enc_state_t is (IDLE, RUNNING, DONE);
+    type enc_state_t is (IDLE, RUNNING, ST_DONE);
     signal state : enc_state_t;
 
     -- ┌─────────────────────────────────┐
@@ -107,14 +107,14 @@ begin
                         beta_reg <= bv;
 
                         if counter = 11 then
-                            state <= DONE;
+                            state <= ST_DONE;
                         else
                             counter <= counter + 1;
                         end if;
 
-                    -- ── DONE ──────────────────────────────────────────
+                    -- ── ST_DONE ───────────────────────────────────────
                     -- Ciphertext valid; hold until re-triggered.
-                    when DONE =>
+                    when ST_DONE =>
                         done <= '1';
                         if start = '1' then
                             beta_reg.a <= plaintext(127 downto  96);
