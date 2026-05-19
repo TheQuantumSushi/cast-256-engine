@@ -1,0 +1,104 @@
+# CAST-256 256-bit key KAT inputs
+# Run through generate_kat.sh to produce the expected ciphertexts.
+# The rfc2612_256bit vector is kept as a sanity anchor.
+
+# ── RFC 2612 Appendix A anchor ────────────────────────────────────────────────
+NAME:rfc2612_256bit
+KEY:2342bb9efa38542cbed0ac83940ac2988d7c47ce264908461cc1b5137ae6b604
+PLAINTEXT:00000000000000000000000000000000
+
+# ── All-zeros / all-ones boundary inputs ──────────────────────────────────────
+# Catches stuck-at faults: a broken S-box or round function often passes these
+# trivially while failing on mixed-bit inputs.
+NAME:zero_key_zero_pt
+KEY:0000000000000000000000000000000000000000000000000000000000000000
+PLAINTEXT:00000000000000000000000000000000
+
+NAME:ones_key_ones_pt
+KEY:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+PLAINTEXT:ffffffffffffffffffffffffffffffff
+
+NAME:zero_key_ones_pt
+KEY:0000000000000000000000000000000000000000000000000000000000000000
+PLAINTEXT:ffffffffffffffffffffffffffffffff
+
+NAME:ones_key_zero_pt
+KEY:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+PLAINTEXT:00000000000000000000000000000000
+
+# ── Alternating-bit patterns ──────────────────────────────────────────────────
+# 0xAA = 10101010, 0x55 = 01010101.
+# Stresses every other bit position; sensitive to off-by-one rotation errors
+# in rotl/rotr and to carry-propagation bugs in the modular arithmetic.
+NAME:aa_key_zero_pt
+KEY:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+PLAINTEXT:00000000000000000000000000000000
+
+NAME:55_key_zero_pt
+KEY:5555555555555555555555555555555555555555555555555555555555555555
+PLAINTEXT:00000000000000000000000000000000
+
+NAME:aa_key_55_pt
+KEY:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+PLAINTEXT:55555555555555555555555555555555
+
+NAME:55_key_aa_pt
+KEY:5555555555555555555555555555555555555555555555555555555555555555
+PLAINTEXT:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+# ── Incrementing bytes ────────────────────────────────────────────────────────
+# Realistic non-trivial data; all byte values distinct so no accidental
+# symmetry can mask a bug in byte-extraction (the byte() macro / Ia-Id paths).
+NAME:inc_key_zero_pt
+KEY:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+PLAINTEXT:00000000000000000000000000000000
+
+NAME:inc_key_inc_pt
+KEY:000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+PLAINTEXT:000102030405060708090a0b0c0d0e0f
+
+# ── Single-bit sensitivity ────────────────────────────────────────────────────
+# Only the MSB of the key (or plaintext) is set; the output should look
+# pseudo-random, not near-zero.  Useful for catching sign-extension bugs or
+# wrong bit-ordering in the VHDL port map.
+NAME:msb_key_zero_pt
+KEY:8000000000000000000000000000000000000000000000000000000000000000
+PLAINTEXT:00000000000000000000000000000000
+
+NAME:zero_key_msb_pt
+KEY:0000000000000000000000000000000000000000000000000000000000000000
+PLAINTEXT:80000000000000000000000000000000
+
+# ── RFC key with non-trivial plaintext ────────────────────────────────────────
+# Uses the well-known RFC key so subkey correctness is already established;
+# varying the plaintext isolates round-function bugs from key-schedule bugs.
+NAME:rfc_key_ones_pt
+KEY:2342bb9efa38542cbed0ac83940ac2988d7c47ce264908461cc1b5137ae6b604
+PLAINTEXT:ffffffffffffffffffffffffffffffff
+
+NAME:rfc_key_inc_pt
+KEY:2342bb9efa38542cbed0ac83940ac2988d7c47ce264908461cc1b5137ae6b604
+PLAINTEXT:000102030405060708090a0b0c0d0e0f
+
+# ── Random vectors ────────────────────────────────────────────────────────────
+# Pseudo-random keys and plaintexts generated with a CSPRNG; representative
+# of typical use (arbitrary encrypted traffic, session keys, etc.).
+NAME:random_0
+KEY:f57c463b101e3b9982eca7247255e847607151b40423034f51a83efcfb8b9a4c
+PLAINTEXT:000e4fad76e8dd7d7b68e61f8724b6fd
+
+NAME:random_1
+KEY:64ad02352e30d1c88c3056c52e4643cd501d507178764200f7ea1e1ba4aceff2
+PLAINTEXT:978265166230bcb2fce549687d4df6be
+
+NAME:random_2
+KEY:6bf93bc7069a73cab3d49327c8141186f4743b5c4dfd475bd1b4b4595b76a67b
+PLAINTEXT:ce46c6c0f182023eeb85b2dc7cc53f35
+
+NAME:random_3
+KEY:99d93ae9e657d6d4ccae26d59fe291829b5c8e6aea1e296aacf225c1c4718804
+PLAINTEXT:3007eed00120b1c145d6fac72a505bf7
+
+NAME:random_4
+KEY:4a716fa35094df6c90d31ff15c733d8e5653535ea1f9c13a16c443d855b18e9d
+PLAINTEXT:9b019b94b34176663eeddaafe637478c
