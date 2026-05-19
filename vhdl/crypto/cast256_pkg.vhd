@@ -54,25 +54,6 @@ package cast256_pkg is
     constant SBOX3 : sbox_t;
     constant SBOX4 : sbox_t;
 
-    -- ── Synthesis attribute : map S-boxes to block RAM ────────────────
-    -- Instructs Vivado to implement the four S-boxes as BRAM rather than
-    -- distributed LUT RAM.  Each S-box is 256 × 32 bits = 8 kbit, so all
-    -- four together occupy 4 × 0.5 = 2 RAMB18 (or 1 RAMB36) resources
-    -- rather than thousands of LUT6 + MUXF7 / MUXF8 cells.
-    --
-    -- NOTE: 7-series Block RAMs have a registered (1-cycle latency) output.
-    -- The current f1/f2/f3 functions read the S-boxes combinatorially, so
-    -- Vivado may warn about asynchronous BRAM access and partially fall back
-    -- to LUT.  Full benefit requires restructuring the S-box reads to be
-    -- synchronous (registered address) — that is the planned second step.
-    -- This attribute is added now so the inference fires automatically once
-    -- that restructuring is in place.
-    attribute rom_style : string;
-    attribute rom_style of SBOX1 : constant is "block";
-    attribute rom_style of SBOX2 : constant is "block";
-    attribute rom_style of SBOX3 : constant is "block";
-    attribute rom_style of SBOX4 : constant is "block";
-
     constant TM : tm_array_t;   -- 96 masking constants derived from sqrt(2)
     constant TR : tr_array_t;   -- 96 rotation constants derived from sqrt(3)
 
