@@ -1,0 +1,59 @@
+/* crypto_mem.c — address translation and cache coherency utilities.
+ *
+ * These functions are Linux / ARM-specific:
+ *   - virt_to_phys  requires /proc/self/pagemap (Linux kernel feature)
+ *   - flush/invalidate use __builtin___clear_cache (GCC / Clang on ARM)
+ *
+ * Do not link this file for host-side (x86) test builds.
+ */
+
+#include "crypto_driver.h"
+
+#include <fcntl.h>
+#include <stdint.h>
+#include <unistd.h>
+
+/* ---------------------------------------------------------------------------
+ * Address translation
+ * --------------------------------------------------------------------------*/
+
+uint64_t virt_to_phys(void *vaddr) {
+    uint64_t entry = 0;
+
+    int fd = open("/proc/self/pagemap", O_RDONLY);
+    if (fd < 0) return 0;
+
+    long page_size = sysconf(_SC_PAGESIZE);
+    /* Each pagemap entry is 8 bytes; entry index = page number */
+    off_t offset = ((uintptr_t)vaddr / (size_t)page_size) * 8;
+
+    if (lseek(fd, offset, SEEK_SET) < 0) { close(fd); return 0; }
+    if (read(fd, &entry, 8) != 8)        { close(fd); return 0; }
+    close(fd);
+
+    /* Bit 63: page present in RAM.  Bits 54:0: PFN. */
+    if (!(entry & (1ULL << 63))) return 0;
+    uint64_t pfn = entry & 0x007FFFFFFFFFFFFFULL;
+    return (pfn * (uint64_t)page_size) + ((uintptr_t)vaddr % (size_t)page_size);
+}
+
+/* ---------------------------------------------------------------------------
+ * Cache coherency
+ * --------------------------------------------------------------------------*/
+
+/* DMA accesses DDR directly; the CPU caches are not automatically coherent.
+ *
+ * Before a DMA read  (hardware reads from DDR): flush so CPU writes reach DDR.
+ * After  a DMA write (hardware writes to DDR) : invalidate so CPU reads fresh
+ * data rather than stale cached data.
+ *
+ * Skipping either step causes silent data corruption.
+ */
+
+void crypto_flush_cache(void *buf, size_t len) {
+    __builtin___clear_cache((char *)buf, (char *)buf + len);
+}
+
+void crypto_invalidate_cache(void *buf, size_t len) {
+    __builtin___clear_cache((char *)buf, (char *)buf + len);
+}
