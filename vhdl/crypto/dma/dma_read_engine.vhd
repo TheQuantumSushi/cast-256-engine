@@ -1,13 +1,14 @@
 -- DMA Read Engine: fetches 128-bit blocks (4 x 32-bit AXI4-Lite reads) from DDR.
+-- Uses template fifo (w=128, d=2) as output buffer so the fetch FSM can start
+-- the next block immediately after pushing, without waiting for the GCM core.
 -- Big-endian assembly: first AXI word -> bits 127:96.
--- rd_done is sticky: asserts when all blocks are consumed, clears on rd_start.
---
--- Indentation technique: each FSM state delegates to a process-local procedure
--- so that no code path exceeds three visible levels inside a when-clause.
+-- rd_done is sticky: asserts when all blocks are pushed, clears on rd_start.
 
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
+
+library common;
 
 entity dma_read_engine is
     port (
@@ -40,6 +41,15 @@ architecture rtl of dma_read_engine is
 
     constant RESP_OKAY : std_ulogic_vector(1 downto 0) := "00";
 
+    ---------------------------------------------------------------------------
+    -- Template FIFO interface (w=128, d=2) — decouples fetch from consumption
+    ---------------------------------------------------------------------------
+    signal fifo_write_i : std_ulogic := '0';
+    signal fifo_read_i  : std_ulogic := '0';
+    signal fifo_rdata_i : std_ulogic_vector(127 downto 0);
+    signal fifo_empty_i : std_ulogic;
+    signal fifo_full_i  : std_ulogic;
+
     type state_t is (RD_IDLE, RD_ISSUE_AR, RD_WAIT_RDATA, RD_BLOCK_READY);
     signal state : state_t := RD_IDLE;
 
@@ -49,26 +59,58 @@ architecture rtl of dma_read_engine is
     signal rd_total       : unsigned(23 downto 0) := (others => '0');
     signal rd_block_buf   : std_ulogic_vector(127 downto 0) := (others => '0');
 
-    signal arvalid_i        : std_ulogic := '0';
-    signal araddr_i         : std_ulogic_vector(29 downto 0) := (others => '0');
-    signal rready_i         : std_ulogic := '0';
-    signal rd_block_valid_i : std_ulogic := '0';
-    signal rd_done_i        : std_ulogic := '0';
-    signal rd_error_i       : std_ulogic := '0';
+    signal arvalid_i  : std_ulogic := '0';
+    signal araddr_i   : std_ulogic_vector(29 downto 0) := (others => '0');
+    signal rready_i   : std_ulogic := '0';
+    signal rd_done_i  : std_ulogic := '0';
+    signal rd_error_i : std_ulogic := '0';
 
 begin
 
-    m_axi_arvalid  <= arvalid_i;
-    m_axi_araddr   <= araddr_i;
-    m_axi_rready   <= rready_i;
-    rd_block_data  <= rd_block_buf;
-    rd_block_valid <= rd_block_valid_i;
-    rd_done        <= rd_done_i;
-    rd_error       <= rd_error_i;
+    ---------------------------------------------------------------------------
+    -- FIFO instance: fetch FSM pushes assembled blocks; GCM datapath pops.
+    ---------------------------------------------------------------------------
+    u_fifo : entity common.fifo(rtl)
+        generic map(w => 128, d => 2)
+        port map(
+            aclk    => aclk,
+            aresetn => aresetn,
+            write   => fifo_write_i,
+            wdata   => rd_block_buf,
+            read    => fifo_read_i,
+            rdata   => fifo_rdata_i,
+            empty   => fifo_empty_i,
+            full    => fifo_full_i
+        );
 
+    -- FIFO output drives the block interface directly.
+    rd_block_data  <= fifo_rdata_i;
+    rd_block_valid <= not fifo_empty_i;
+
+    m_axi_arvalid <= arvalid_i;
+    m_axi_araddr  <= araddr_i;
+    m_axi_rready  <= rready_i;
+    rd_done       <= rd_done_i;
+    rd_error      <= rd_error_i;
+
+    ---------------------------------------------------------------------------
+    -- Pop FIFO when GCM signals consumption.
+    ---------------------------------------------------------------------------
+    p_pop : process(aclk)
+    begin
+        if rising_edge(aclk) then
+            fifo_read_i <= '0';
+            if aresetn = '1' and rd_block_consumed = '1' and fifo_empty_i = '0' then
+                fifo_read_i <= '1';
+            end if;
+        end if;
+    end process p_pop;
+
+    ---------------------------------------------------------------------------
+    -- Fetch FSM (AR + R channels + block assembly)
+    ---------------------------------------------------------------------------
     p_read : process(aclk)
 
-        -- Write the current AXI read word into the correct 32-bit lane.
         procedure latch_word is
         begin
             case rd_word_idx is
@@ -79,28 +121,13 @@ begin
             end case;
         end procedure;
 
-        -- Retire the current block; either start the next fetch or signal completion.
-        -- araddr_i is driven in RD_ISSUE_AR so rd_addr just needs to be correct by then.
-        procedure consume_block is
-        begin
-            rd_block_valid_i <= '0';
-            rd_blocks_done   <= rd_blocks_done + 1;
-            if rd_blocks_done + 1 = rd_total then
-                rd_done_i <= '1';
-                state     <= RD_IDLE;
-            else
-                rd_word_idx <= (others => '0');
-                state       <= RD_ISSUE_AR;
-            end if;
-        end procedure;
-
     begin
         if rising_edge(aclk) then
+            fifo_write_i <= '0';  -- default: no push
             if aresetn = '0' then
                 state            <= RD_IDLE;
                 arvalid_i        <= '0';
                 rready_i         <= '0';
-                rd_block_valid_i <= '0';
                 rd_done_i        <= '0';
                 rd_error_i       <= '0';
                 rd_addr          <= (others => '0');
@@ -127,8 +154,6 @@ begin
                             end if;
                         end if;
 
-                    -- arvalid and araddr are continuously driven here so any
-                    -- previously-scheduled rd_addr update is visible this cycle.
                     when RD_ISSUE_AR =>
                         arvalid_i <= '1';
                         araddr_i  <= std_ulogic_vector(rd_addr);
@@ -156,10 +181,19 @@ begin
                             end if;
                         end if;
 
+                    -- Try to push the assembled block into the FIFO.
+                    -- If full, stay here until there is room.
                     when RD_BLOCK_READY =>
-                        rd_block_valid_i <= '1';
-                        if rd_block_consumed = '1' then
-                            consume_block;
+                        if fifo_full_i = '0' then
+                            fifo_write_i   <= '1';
+                            rd_blocks_done <= rd_blocks_done + 1;
+                            if rd_blocks_done + 1 = rd_total then
+                                rd_done_i <= '1';
+                                state     <= RD_IDLE;
+                            else
+                                rd_word_idx <= (others => '0');
+                                state       <= RD_ISSUE_AR;
+                            end if;
                         end if;
 
                     when others =>
