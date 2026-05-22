@@ -42,23 +42,41 @@ COMMON_STAMPS = $(STAMP_AXI_PKG) $(STAMP_FIFO) $(STAMP_SOFT_FIFO) $(STAMP_AXI_ME
 
 # ─── DMA source files (compiled into work, depend on common) ─────────────────
 
-RD_SRC  = dma_read_engine.vhd
-WR_SRC  = dma_write_engine.vhd
-TOP_SRC = dma_engine.vhd
-TB_SRC  = tb_dma_engine.vhd
+FIFO_SRC  = fifo.vhd
+JOIN_SRC  = block_join.vhd
+SPLIT_SRC = block_split.vhd
+RD_SRC    = dma_read_engine.vhd
+WR_SRC    = dma_write_engine.vhd
+TOP_SRC   = dma_engine.vhd
+TB_SRC    = tb_dma_engine.vhd
 
-STAMP_RD  = .analysed_rd
-STAMP_WR  = .analysed_wr
-STAMP_TOP = .analysed_top
-STAMP_TB  = .analysed_tb
+STAMP_FIFO_LOCAL = .analysed_fifo_local
+STAMP_JOIN       = .analysed_join
+STAMP_SPLIT      = .analysed_split
+STAMP_RD         = .analysed_rd
+STAMP_WR         = .analysed_wr
+STAMP_TOP        = .analysed_top
+STAMP_TB         = .analysed_tb
 
 TB_ENTITY = tb_dma_engine
 
-$(STAMP_RD): $(RD_SRC) $(STAMP_FIFO)
+$(STAMP_FIFO_LOCAL): $(FIFO_SRC)
 	$(GHDL) -a $(STD) -P./$(COMMON) $<
 	@touch $@
 
-$(STAMP_WR): $(WR_SRC) $(STAMP_FIFO)
+$(STAMP_JOIN): $(JOIN_SRC) $(STAMP_FIFO_LOCAL)
+	$(GHDL) -a $(STD) -P./$(COMMON) $<
+	@touch $@
+
+$(STAMP_SPLIT): $(SPLIT_SRC) $(STAMP_FIFO_LOCAL)
+	$(GHDL) -a $(STD) -P./$(COMMON) $<
+	@touch $@
+
+$(STAMP_RD): $(RD_SRC) $(STAMP_JOIN)
+	$(GHDL) -a $(STD) -P./$(COMMON) $<
+	@touch $@
+
+$(STAMP_WR): $(WR_SRC) $(STAMP_SPLIT)
 	$(GHDL) -a $(STD) -P./$(COMMON) $<
 	@touch $@
 
@@ -83,6 +101,7 @@ run: elaborate
 	$(GHDL) -r $(STD) -P./$(COMMON) $(TB_ENTITY)
 
 clean:
+	rm -f $(STAMP_FIFO_LOCAL) $(STAMP_JOIN) $(STAMP_SPLIT)
 	rm -f $(STAMP_RD) $(STAMP_WR) $(STAMP_TOP) $(STAMP_TB)
 	rm -f work-obj08.cf $(TB_ENTITY)
 	rm -rf $(COMMON)
