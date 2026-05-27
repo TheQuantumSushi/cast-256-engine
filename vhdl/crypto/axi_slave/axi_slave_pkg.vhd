@@ -4,7 +4,7 @@ use ieee.numeric_std.all;
 
 package axi_slave_pkg is
 
-    constant RESP_OKAY   : std_ulogic_vector(1 downto 0) := "00";
+    constant RESP_OKAY : std_ulogic_vector(1 downto 0) := "00";
     constant RESP_DECERR : std_ulogic_vector(1 downto 0) := "11";
 
     type wr_state_t is (WR_IDLE, WR_HAVE_ADDR, WR_HAVE_DATA, WR_BOTH);
@@ -24,8 +24,8 @@ package body axi_slave_pkg is
         variable a : integer;
     begin
         a := to_integer(unsigned(addr(11 downto 2)));
-        if a >= 0  and a <= 7  then return true; end if;
-        if a >= 8  and a <= 10 then return true; end if;
+        if a >= 0 and a <= 7 then return true; end if;
+        if a >= 8 and a <= 10 then return true; end if;
         if a >= 12 and a <= 23 then return true; end if;
         return false;
     end function;

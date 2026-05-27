@@ -10,65 +10,65 @@ use work.axi_slave_pkg.all;
 
 entity axi_slave_rd is
     port (
-        aclk             : in  std_ulogic;
-        aresetn          : in  std_ulogic;
+        aclk : in std_ulogic;
+        aresetn : in std_ulogic;
 
         -- AR channel
-        s0_axi_araddr    : in  std_ulogic_vector(11 downto 0);
-        s0_axi_arvalid   : in  std_ulogic;
-        s0_axi_arready   : out std_ulogic;
+        s0_axi_araddr : in std_ulogic_vector(11 downto 0);
+        s0_axi_arvalid : in std_ulogic;
+        s0_axi_arready : out std_ulogic;
 
         -- R channel
-        s0_axi_rdata     : out std_ulogic_vector(31 downto 0);
-        s0_axi_rresp     : out std_ulogic_vector( 1 downto 0);
-        s0_axi_rvalid    : out std_ulogic;
-        s0_axi_rready    : in  std_ulogic;
+        s0_axi_rdata : out std_ulogic_vector(31 downto 0);
+        s0_axi_rresp : out std_ulogic_vector(1 downto 0);
+        s0_axi_rvalid : out std_ulogic;
+        s0_axi_rready : in std_ulogic;
 
         -- Datapath status inputs
-        ct_len_in        : in  std_ulogic_vector(31 downto 0);
-        csr_busy         : in  std_ulogic;
-        csr_done         : in  std_ulogic;
-        csr_tag_valid    : in  std_ulogic;
-        csr_error        : in  std_ulogic;
-        fsm_state_in     : in  std_ulogic_vector( 3 downto 0);
+        ct_len_in : in std_ulogic_vector(31 downto 0);
+        csr_busy : in std_ulogic;
+        csr_done : in std_ulogic;
+        csr_tag_valid : in std_ulogic;
+        csr_error : in std_ulogic;
+        fsm_state_in : in std_ulogic_vector(3 downto 0);
 
         -- Register state from write channel
-        tag_in           : in  std_ulogic_vector(127 downto 0);
-        mode_in          : in  std_ulogic
+        tag_in : in std_ulogic_vector(127 downto 0);
+        mode_in : in std_ulogic
     );
 end entity axi_slave_rd;
 
 architecture rtl of axi_slave_rd is
 
-    signal rd_state    : rd_state_t := RD_IDLE;
+    signal rd_state : rd_state_t := RD_IDLE;
     signal rd_addr_lat : std_ulogic_vector(11 downto 0) := (others => '0');
 
     signal arready_i : std_ulogic := '0';
-    signal rvalid_i  : std_ulogic := '0';
-    signal rdata_i   : std_ulogic_vector(31 downto 0) := (others => '0');
-    signal rresp_i   : std_ulogic_vector(1 downto 0)  := RESP_OKAY;
+    signal rvalid_i : std_ulogic := '0';
+    signal rdata_i : std_ulogic_vector(31 downto 0) := (others => '0');
+    signal rresp_i : std_ulogic_vector(1 downto 0) := RESP_OKAY;
 
 begin
 
     s0_axi_arready <= arready_i;
-    s0_axi_rvalid  <= rvalid_i;
-    s0_axi_rdata   <= rdata_i;
-    s0_axi_rresp   <= rresp_i;
+    s0_axi_rvalid <= rvalid_i;
+    s0_axi_rdata <= rdata_i;
+    s0_axi_rresp <= rresp_i;
 
     ---------------------------------------------------------------------------
     -- Read sub-FSM (AR + R channels)
     ---------------------------------------------------------------------------
     p_read : process(aclk)
         variable addr_v : std_ulogic_vector(11 downto 0);
-        variable csr_v  : std_ulogic_vector(31 downto 0);
+        variable csr_v : std_ulogic_vector(31 downto 0);
     begin
         if rising_edge(aclk) then
             if aresetn = '0' then
-                rd_state  <= RD_IDLE;
+                rd_state <= RD_IDLE;
                 arready_i <= '0';
-                rvalid_i  <= '0';
-                rdata_i   <= (others => '0');
-                rresp_i   <= RESP_OKAY;
+                rvalid_i <= '0';
+                rdata_i <= (others => '0');
+                rresp_i <= RESP_OKAY;
             else
                 case rd_state is
 
@@ -76,8 +76,8 @@ begin
                         arready_i <= '0';
                         if s0_axi_arvalid = '1' then
                             rd_addr_lat <= s0_axi_araddr;
-                            arready_i   <= '1';
-                            rd_state    <= RD_LATCHED;
+                            arready_i <= '1';
+                            rd_state <= RD_LATCHED;
                         end if;
 
                     when RD_LATCHED =>
@@ -123,13 +123,13 @@ begin
                             end case;
 
                         elsif addr_v = x"058" then
-                            csr_v     := (others => '0');
-                            csr_v(2)  := mode_in;
-                            csr_v(8)  := csr_busy;
-                            csr_v(9)  := csr_done;
+                            csr_v := (others => '0');
+                            csr_v(2) := mode_in;
+                            csr_v(8) := csr_busy;
+                            csr_v(9) := csr_done;
                             csr_v(10) := csr_tag_valid;
                             csr_v(11) := csr_error;
-                            rdata_i   <= csr_v;
+                            rdata_i <= csr_v;
 
                         elsif addr_v = x"05C" then
                             rdata_i <= (27 downto 0 => '0') & fsm_state_in;

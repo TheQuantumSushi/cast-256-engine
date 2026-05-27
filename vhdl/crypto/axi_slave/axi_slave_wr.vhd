@@ -11,96 +11,96 @@ use work.axi_slave_pkg.all;
 
 entity axi_slave_wr is
     port (
-        aclk             : in  std_ulogic;
-        aresetn          : in  std_ulogic;
+        aclk : in std_ulogic;
+        aresetn : in std_ulogic;
 
         -- AW channel
-        s0_axi_awaddr    : in  std_ulogic_vector(11 downto 0);
-        s0_axi_awvalid   : in  std_ulogic;
-        s0_axi_awready   : out std_ulogic;
+        s0_axi_awaddr : in std_ulogic_vector(11 downto 0);
+        s0_axi_awvalid : in std_ulogic;
+        s0_axi_awready : out std_ulogic;
 
         -- W channel
-        s0_axi_wdata     : in  std_ulogic_vector(31 downto 0);
-        s0_axi_wstrb     : in  std_ulogic_vector( 3 downto 0);
-        s0_axi_wvalid    : in  std_ulogic;
-        s0_axi_wready    : out std_ulogic;
+        s0_axi_wdata : in std_ulogic_vector(31 downto 0);
+        s0_axi_wstrb : in std_ulogic_vector(3 downto 0);
+        s0_axi_wvalid : in std_ulogic;
+        s0_axi_wready : out std_ulogic;
 
         -- B channel
-        s0_axi_bresp     : out std_ulogic_vector( 1 downto 0);
-        s0_axi_bvalid    : out std_ulogic;
-        s0_axi_bready    : in  std_ulogic;
+        s0_axi_bresp : out std_ulogic_vector(1 downto 0);
+        s0_axi_bvalid : out std_ulogic;
+        s0_axi_bready : in std_ulogic;
 
         -- Datapath inputs
-        csr_busy         : in  std_ulogic;
-        csr_done         : in  std_ulogic;
-        tag_computed_in  : in  std_ulogic_vector(127 downto 0);
+        csr_busy : in std_ulogic;
+        csr_done : in std_ulogic;
+        tag_computed_in : in std_ulogic_vector(127 downto 0);
 
         -- Register outputs to datapath
-        key_out          : out std_ulogic_vector(255 downto 0);
-        iv_out           : out std_ulogic_vector( 95 downto 0);
-        aad_addr_out     : out std_ulogic_vector(31 downto 0);
-        aad_len_out      : out std_ulogic_vector(31 downto 0);
-        pt_addr_out      : out std_ulogic_vector(31 downto 0);
-        pt_len_out       : out std_ulogic_vector(31 downto 0);
-        ct_addr_out      : out std_ulogic_vector(31 downto 0);
+        key_out : out std_ulogic_vector(255 downto 0);
+        iv_out : out std_ulogic_vector(95 downto 0);
+        aad_addr_out : out std_ulogic_vector(31 downto 0);
+        aad_len_out : out std_ulogic_vector(31 downto 0);
+        pt_addr_out : out std_ulogic_vector(31 downto 0);
+        pt_len_out : out std_ulogic_vector(31 downto 0);
+        ct_addr_out : out std_ulogic_vector(31 downto 0);
 
         -- Shared with read channel
-        tag_out          : out std_ulogic_vector(127 downto 0);
-        mode_out         : out std_ulogic;
+        tag_out : out std_ulogic_vector(127 downto 0);
+        mode_out : out std_ulogic;
 
         -- Control pulses
-        start_out        : out std_ulogic;
-        soft_reset_out   : out std_ulogic;
-        key_loaded_out   : out std_ulogic
+        start_out : out std_ulogic;
+        soft_reset_out : out std_ulogic;
+        key_loaded_out : out std_ulogic
     );
 end entity axi_slave_wr;
 
 architecture rtl of axi_slave_wr is
 
-    signal key_r      : std_ulogic_vector(255 downto 0) := (others => '0');
-    signal iv_r       : std_ulogic_vector( 95 downto 0) := (others => '0');
-    signal aad_addr_r : std_ulogic_vector(31 downto 0)  := (others => '0');
-    signal aad_len_r  : std_ulogic_vector(31 downto 0)  := (others => '0');
-    signal pt_addr_r  : std_ulogic_vector(31 downto 0)  := (others => '0');
-    signal pt_len_r   : std_ulogic_vector(31 downto 0)  := (others => '0');
-    signal ct_addr_r  : std_ulogic_vector(31 downto 0)  := (others => '0');
-    signal tag_r      : std_ulogic_vector(127 downto 0) := (others => '0');
-    signal mode_r     : std_ulogic                      := '0';
+    signal key_r : std_ulogic_vector(255 downto 0) := (others => '0');
+    signal iv_r : std_ulogic_vector(95 downto 0) := (others => '0');
+    signal aad_addr_r : std_ulogic_vector(31 downto 0) := (others => '0');
+    signal aad_len_r : std_ulogic_vector(31 downto 0) := (others => '0');
+    signal pt_addr_r : std_ulogic_vector(31 downto 0) := (others => '0');
+    signal pt_len_r : std_ulogic_vector(31 downto 0) := (others => '0');
+    signal ct_addr_r : std_ulogic_vector(31 downto 0) := (others => '0');
+    signal tag_r : std_ulogic_vector(127 downto 0) := (others => '0');
+    signal mode_r : std_ulogic := '0';
 
     -- Bitmask of key words written; pulse key_loaded when all 8 are set
     signal key_word_written : std_ulogic_vector(7 downto 0) := (others => '0');
 
-    signal wr_state    : wr_state_t := WR_IDLE;
+    signal wr_state : wr_state_t := WR_IDLE;
     signal wr_addr_lat : std_ulogic_vector(11 downto 0) := (others => '0');
     signal wr_data_lat : std_ulogic_vector(31 downto 0) := (others => '0');
-    signal wr_strb_lat : std_ulogic_vector( 3 downto 0) := (others => '0');
+    signal wr_strb_lat : std_ulogic_vector(3 downto 0) := (others => '0');
 
     signal awready_i : std_ulogic := '0';
-    signal wready_i  : std_ulogic := '0';
-    signal bvalid_i  : std_ulogic := '0';
-    signal bresp_i   : std_ulogic_vector(1 downto 0) := RESP_OKAY;
+    signal wready_i : std_ulogic := '0';
+    signal bvalid_i : std_ulogic := '0';
+    signal bresp_i : std_ulogic_vector(1 downto 0) := RESP_OKAY;
 
     signal key_loaded_r : std_ulogic := '0';
-    signal start_r      : std_ulogic := '0';
-    signal sreset_r     : std_ulogic := '0';
+    signal start_r : std_ulogic := '0';
+    signal sreset_r : std_ulogic := '0';
 
 begin
 
     s0_axi_awready <= awready_i;
-    s0_axi_wready  <= wready_i;
-    s0_axi_bvalid  <= bvalid_i;
-    s0_axi_bresp   <= bresp_i;
+    s0_axi_wready <= wready_i;
+    s0_axi_bvalid <= bvalid_i;
+    s0_axi_bresp <= bresp_i;
 
-    key_out        <= key_r;
-    iv_out         <= iv_r;
-    aad_addr_out   <= aad_addr_r;
-    aad_len_out    <= aad_len_r;
-    pt_addr_out    <= pt_addr_r;
-    pt_len_out     <= pt_len_r;
-    ct_addr_out    <= ct_addr_r;
-    tag_out        <= tag_r;
-    mode_out       <= mode_r;
-    start_out      <= start_r;
+    key_out <= key_r;
+    iv_out <= iv_r;
+    aad_addr_out <= aad_addr_r;
+    aad_len_out <= aad_len_r;
+    pt_addr_out <= pt_addr_r;
+    pt_len_out <= pt_len_r;
+    ct_addr_out <= ct_addr_r;
+    tag_out <= tag_r;
+    mode_out <= mode_r;
+    start_out <= start_r;
     soft_reset_out <= sreset_r;
     key_loaded_out <= key_loaded_r;
 
@@ -108,56 +108,56 @@ begin
     -- Write sub-FSM (AW + W + B channels)
     ---------------------------------------------------------------------------
     p_write : process(aclk)
-        variable addr_v      : std_ulogic_vector(11 downto 0);
-        variable data_v      : std_ulogic_vector(31 downto 0);
-        variable strb_v      : std_ulogic_vector( 3 downto 0);
-        variable widx        : integer;
+        variable addr_v : std_ulogic_vector(11 downto 0);
+        variable data_v : std_ulogic_vector(31 downto 0);
+        variable strb_v : std_ulogic_vector(3 downto 0);
+        variable widx : integer;
         variable wr_decerr_v : std_ulogic;
     begin
         if rising_edge(aclk) then
             -- Default: clear one-cycle pulses
-            start_r      <= '0';
-            sreset_r     <= '0';
+            start_r <= '0';
+            sreset_r <= '0';
             key_loaded_r <= '0';
 
             if aresetn = '0' then
-                wr_state         <= WR_IDLE;
-                awready_i        <= '0';
-                wready_i         <= '0';
-                bvalid_i         <= '0';
-                bresp_i          <= RESP_OKAY;
-                key_r            <= (others => '0');
-                iv_r             <= (others => '0');
-                aad_addr_r       <= (others => '0');
-                aad_len_r        <= (others => '0');
-                pt_addr_r        <= (others => '0');
-                pt_len_r         <= (others => '0');
-                ct_addr_r        <= (others => '0');
-                tag_r            <= (others => '0');
-                mode_r           <= '0';
+                wr_state <= WR_IDLE;
+                awready_i <= '0';
+                wready_i <= '0';
+                bvalid_i <= '0';
+                bresp_i <= RESP_OKAY;
+                key_r <= (others => '0');
+                iv_r <= (others => '0');
+                aad_addr_r <= (others => '0');
+                aad_len_r <= (others => '0');
+                pt_addr_r <= (others => '0');
+                pt_len_r <= (others => '0');
+                ct_addr_r <= (others => '0');
+                tag_r <= (others => '0');
+                mode_r <= '0';
                 key_word_written <= (others => '0');
             else
                 case wr_state is
 
                     when WR_IDLE =>
                         awready_i <= '0';
-                        wready_i  <= '0';
+                        wready_i <= '0';
                         if s0_axi_awvalid = '1' and s0_axi_wvalid = '1' then
                             wr_addr_lat <= s0_axi_awaddr;
                             wr_data_lat <= s0_axi_wdata;
                             wr_strb_lat <= s0_axi_wstrb;
-                            awready_i   <= '1';
-                            wready_i    <= '1';
-                            wr_state    <= WR_BOTH;
+                            awready_i <= '1';
+                            wready_i <= '1';
+                            wr_state <= WR_BOTH;
                         elsif s0_axi_awvalid = '1' then
                             wr_addr_lat <= s0_axi_awaddr;
-                            awready_i   <= '1';
-                            wr_state    <= WR_HAVE_ADDR;
+                            awready_i <= '1';
+                            wr_state <= WR_HAVE_ADDR;
                         elsif s0_axi_wvalid = '1' then
                             wr_data_lat <= s0_axi_wdata;
                             wr_strb_lat <= s0_axi_wstrb;
-                            wready_i    <= '1';
-                            wr_state    <= WR_HAVE_DATA;
+                            wready_i <= '1';
+                            wr_state <= WR_HAVE_DATA;
                         end if;
 
                     when WR_HAVE_ADDR =>
@@ -165,21 +165,21 @@ begin
                         if s0_axi_wvalid = '1' then
                             wr_data_lat <= s0_axi_wdata;
                             wr_strb_lat <= s0_axi_wstrb;
-                            wready_i    <= '1';
-                            wr_state    <= WR_BOTH;
+                            wready_i <= '1';
+                            wr_state <= WR_BOTH;
                         end if;
 
                     when WR_HAVE_DATA =>
                         wready_i <= '0';
                         if s0_axi_awvalid = '1' then
                             wr_addr_lat <= s0_axi_awaddr;
-                            awready_i   <= '1';
-                            wr_state    <= WR_BOTH;
+                            awready_i <= '1';
+                            wr_state <= WR_BOTH;
                         end if;
 
                     when WR_BOTH =>
                         awready_i <= '0';
-                        wready_i  <= '0';
+                        wready_i <= '0';
                         addr_v := wr_addr_lat;
                         data_v := wr_data_lat;
                         strb_v := wr_strb_lat;
@@ -237,7 +237,7 @@ begin
                             end if;
 
                         elsif addr_v = x"02C" then
-                            -- Reserved gap — DECERR
+                            -- Reserved gap -- DECERR
                             wr_decerr_v := '1';
 
                         elsif addr_v = x"030" then
@@ -292,7 +292,7 @@ begin
                         elsif addr_v(11 downto 5) = "0000010" and
                               unsigned(addr_v(4 downto 2)) >= 2 and
                               unsigned(addr_v(4 downto 2)) <= 5 then
-                            -- 0x048-0x054: Tag register (R/W — expected tag for decrypt)
+                            -- 0x048-0x054: Tag register (R/W -- expected tag for decrypt)
                             if csr_busy = '0' then
                                 case addr_v(4 downto 2) is
                                     when "010" =>  -- 0x048: bits 127:96
@@ -331,7 +331,7 @@ begin
                             -- CSR: SOFT_RESET effective even when BUSY
                             if strb_v(0) = '1' then
                                 if data_v(1) = '1' then
-                                    sreset_r         <= '1';
+                                    sreset_r <= '1';
                                     key_word_written <= (others => '0');
                                 end if;
                                 if data_v(0) = '1' and csr_busy = '0' then
@@ -375,15 +375,15 @@ begin
 
                 -- SOFT_RESET clears all registers
                 if sreset_r = '1' then
-                    key_r            <= (others => '0');
-                    iv_r             <= (others => '0');
-                    aad_addr_r       <= (others => '0');
-                    aad_len_r        <= (others => '0');
-                    pt_addr_r        <= (others => '0');
-                    pt_len_r         <= (others => '0');
-                    ct_addr_r        <= (others => '0');
-                    tag_r            <= (others => '0');
-                    mode_r           <= '0';
+                    key_r <= (others => '0');
+                    iv_r <= (others => '0');
+                    aad_addr_r <= (others => '0');
+                    aad_len_r <= (others => '0');
+                    pt_addr_r <= (others => '0');
+                    pt_len_r <= (others => '0');
+                    ct_addr_r <= (others => '0');
+                    tag_r <= (others => '0');
+                    mode_r <= '0';
                     key_word_written <= (others => '0');
                 end if;
 
