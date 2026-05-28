@@ -31,17 +31,17 @@ use ieee.numeric_std.all;
 
 -- ┌──────────────────────────────────────────────────────────────────────────┐
 -- │ Generics                                                                 │
--- │   KEY_HEX [string(1 to 64)] : 256-bit key as 64 lowercase hex chars      │
--- │   PT_HEX  [string(1 to 32)] : 128-bit plaintext as 32 lowercase hex      │
+-- │   KEY_HEX [string] : 256-bit key as 64 lowercase hex chars      │
+-- │   PT_HEX  [string] : 128-bit plaintext as 32 lowercase hex      │
 -- │                                                                          │
 -- │ Defaults are the RFC 2612 Appendix A 256-bit test vector.                │
 -- │ Expected ciphertext : 4f6a2038286897b9c9870136553317fa                   │
 -- └──────────────────────────────────────────────────────────────────────────┘
 entity tb_cast256 is
     generic (
-        KEY_HEX : string(1 to 64) :=
+        KEY_HEX : string :=
             "2342bb9efa38542cbed0ac83940ac2988d7c47ce264908461cc1b5137ae6b604";
-        PT_HEX  : string(1 to 32) := "00000000000000000000000000000000"
+        PT_HEX  : string := "00000000000000000000000000000000"
     );
 end entity tb_cast256;
 
@@ -137,17 +137,41 @@ begin
     -- ┌──────────────────────────────────────┐
     -- │ DUT instantiation                    │
     -- └──────────────────────────────────────┘
+    -- Channel 0 is driven by the stimulus process.
+    -- Channels 1-5 are idle (start tied low, outputs open).
     u_dut : entity work.cast256
         port map (
-            aclk          => aclk,
-            aresetn       => aresetn,
-            key           => key,
-            key_valid     => key_valid,
-            key_ready     => key_ready,
-            plaintext     => plaintext,
-            encrypt_start => encrypt_start,
-            ciphertext    => ciphertext,
-            enc_done      => enc_done
+            aclk            => aclk,
+            aresetn         => aresetn,
+            key             => key,
+            key_valid       => key_valid,
+            key_ready       => key_ready,
+            -- ── Channel 0 (active) ─────────────────────────────────────
+            plaintext_0     => plaintext,
+            encrypt_start_0 => encrypt_start,
+            ciphertext_0    => ciphertext,
+            enc_done_0      => enc_done,
+            -- ── Channels 1-5 (idle) ────────────────────────────────────
+            plaintext_1     => (others => '0'),
+            encrypt_start_1 => '0',
+            ciphertext_1    => open,
+            enc_done_1      => open,
+            plaintext_2     => (others => '0'),
+            encrypt_start_2 => '0',
+            ciphertext_2    => open,
+            enc_done_2      => open,
+            plaintext_3     => (others => '0'),
+            encrypt_start_3 => '0',
+            ciphertext_3    => open,
+            enc_done_3      => open,
+            plaintext_4     => (others => '0'),
+            encrypt_start_4 => '0',
+            ciphertext_4    => open,
+            enc_done_4      => open,
+            plaintext_5     => (others => '0'),
+            encrypt_start_5 => '0',
+            ciphertext_5    => open,
+            enc_done_5      => open
         );
 
     -- ┌──────────────────────────────────────┐
