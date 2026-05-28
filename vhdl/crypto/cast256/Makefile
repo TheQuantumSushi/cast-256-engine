@@ -115,30 +115,42 @@ run: elaborate
 		-gKEY_HEX=$(KEY) \
 		-gPT_HEX=$(PT)
 
+# ── Synthesis target device ───────────────────────────────────────────────────
+# Defined here so the Makefile summary can use it directly without parsing logs.
+# Update if switching boards (e.g. xc7z020clg400-1 for Zybo Z7-20).
+PART = xc7z010clg400-1
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Vivado synthesis and timing analysis
 #
-# Vivado output is teed to vivado_synth.log so the post-processing awk scripts
-# can parse it without re-running the tool.
+# Three bugs fixed vs the previous version:
 #
-# Summary parsing:
-#   utilization.rpt  → LUT count and utilisation % (read from Vivado's own
-#                       "Util%" column — never computed manually, which was
-#                       the source of the previous "17600% of device" bug)
-#   vivado_synth.log → Fmax, critical path, WNS (from TCL puts lines)
+#  1. Header part name: grep 'for part:' matched the TCL echo line
+#       # puts " Synthesizing cast256 for part: $part"
+#     before the actual output, so awk '{print $NF}' gave '$part"'.
+#     Fix: use the PART Makefile variable directly in printf — no log parsing.
+#
+#  2. LUT utilisation % showed device count (17600) instead of percentage.
+#     Vivado 2024.2 adds a "Prohibited" column, shifting Util% from field $6
+#     to $7. Using $(NF-1) (second-to-last field) is robust regardless of
+#     how many columns Vivado includes.
+#
+#  3. Timing lines appeared twice, once garbled ("WNS : ns" $wns]").
+#     Vivado echoes every TCL command with a leading '#' before executing it,
+#     so /Worst slack/ matched both the echo and the real output line.
+#     Fix: !/^#/ && before each timing pattern excludes the echo lines.
 # ─────────────────────────────────────────────────────────────────────────────
 .PHONY: synth
 synth: $(TCL_SCRIPT)
 	@$(VIVADO) -mode batch -source $(TCL_SCRIPT) 2>&1 | tee vivado_synth.log
 	@echo ""
 	@printf "  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-	@printf "  Synthesis Summary — cast256 (%s)\n" \
-		"$$(grep 'for part:' vivado_synth.log | awk '{print $$NF}' | head -1)"
+	@printf "  Synthesis Summary — cast256 ($(PART))\n"
 	@printf "  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
 	@awk -F'|' '\
 	/Slice LUTs\*/ { \
-	    used = $$3; gsub(/ /, "", used); \
-	    pct  = $$6; gsub(/ /, "", pct); \
+	    used = $$3;      gsub(/ /, "", used); \
+	    pct  = $$(NF-1); gsub(/ /, "", pct); \
 	    printf "  Total LUTs       : %-8s (%.2f%% of device)\n", used, pct+0 } \
 	/RAMB18E1 only/ { \
 	    n = $$3; gsub(/ /, "", n); \
@@ -148,9 +160,9 @@ synth: $(TCL_SCRIPT)
 	               printf "  Flip-flops       : %d\n", n+0; ff = 1 } } \
 	' utilization.rpt
 	@awk '\
-	/Estimated Fmax/  { printf "  Fmax             : %s %s\n",  $$(NF-1), $$NF } \
-	/Critical path/   { printf "  Critical path    : %s %s\n",  $$(NF-1), $$NF } \
-	/Worst slack/     { printf "  WNS              : %s %s\n",  $$(NF-1), $$NF } \
+	!/^#/ && /Estimated Fmax/ { printf "  Fmax             : %s %s\n", $$(NF-1), $$NF } \
+	!/^#/ && /Critical path/  { printf "  Critical path    : %s %s\n", $$(NF-1), $$NF } \
+	!/^#/ && /Worst slack/    { printf "  WNS              : %s %s\n", $$(NF-1), $$NF } \
 	' vivado_synth.log
 	@printf "  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
 
