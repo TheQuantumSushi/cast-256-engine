@@ -167,7 +167,79 @@ run: elaborate
 	@echo "\033[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Run simulation with VCD waveform dump
+# Run simulation with cycle timing report
+#
+# Filters [TIMING] report lines emitted by gcm.vhd and builds a per-phase
+# table showing absolute cycle number and delta cycles between phases.
+#
+# Assumes CLK_PERIOD = 10 ns (hardcoded in gcm.vhd report statements).
+#
+# Phases reported (per test run):
+#   START     → start_i asserted
+#   H_START   → key schedule done; H = CAST256(K,0) starting
+#   GCTR_INIT → H done + all AAD blocks hashed; GCTR starting
+#   LEN_HASH  → all GCTR blocks done; length block GHASH starting
+#   TAG_ENC   → length GHASH done; tag encryption starting
+#   DONE      → done_o asserted
+# ─────────────────────────────────────────────────────────────────────────────
+
+define AWK_TIMING
+BEGIN {
+    run  = 0
+    prev = 0
+    t0   = 0
+    CLK  = 10
+    printf "\n"
+}
+/\[TIMING\]/ {
+    sub(/.*\(report note\): /, "")
+    # extract phase name (word after [TIMING]) and time in ns (last integer before "ns")
+    match($$0, /\[TIMING\] ([A-Z_]+)\s+([0-9]+) ns/, arr)
+    phase = arr[1]
+    t_ns  = arr[2] + 0
+    cyc   = int(t_ns / CLK)
+
+    if (phase == "START") {
+        run++
+        t0   = t_ns
+        prev = t_ns
+        printf "  ╔══════════════════════════════════════════════════════╗\n"
+        printf "  ║  Test run %-3d                                        ║\n", run
+        printf "  ╠═══════════════╦══════════════╦══════════════╦════════╣\n"
+        printf "  ║ %-13s ║ %12s ║ %12s ║ %6s ║\n", \
+               "Phase", "abs ns", "abs cycles", "delta"
+        printf "  ╠═══════════════╬══════════════╬══════════════╬════════╣\n"
+        printf "  ║ %-13s ║ %12d ║ %12d ║ %6s ║\n", \
+               phase, t_ns, cyc, "—"
+    } else {
+        delta = int((t_ns - prev) / CLK)
+        printf "  ║ %-13s ║ %12d ║ %12d ║ %6d ║\n", \
+               phase, t_ns, cyc, delta
+        prev = t_ns
+    }
+    if (phase == "DONE") {
+        total = int((t_ns - t0) / CLK)
+        printf "  ╠═══════════════╬══════════════╬══════════════╬════════╣\n"
+        printf "  ║ %-13s ║ %12s ║ %12s ║ %6d ║\n", \
+               "TOTAL", "", "", total
+        printf "  ╚═══════════════╩══════════════╩══════════════╩════════╝\n\n"
+    }
+}
+endef
+export AWK_TIMING
+
+.PHONY: run-time
+run-time: elaborate
+	@echo "\033[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+	@echo "\033[1m  GCM Cycle Timing — $(TB_ENTITY)\033[0m"
+	@echo "\033[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+	@$(GHDL) -r $(STD) $(TB_ENTITY) \
+		--ieee-asserts=disable \
+		--assert-level=failure \
+		2>&1 | awk "$$AWK_TIMING"
+	@echo "\033[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 .PHONY: run-vcd
 run-vcd: elaborate
