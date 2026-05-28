@@ -2,15 +2,15 @@
 -- │ cast256_ks                                                       │
 -- │                                                                  │
 -- │ CAST-256 key schedule (RFC 2612).                                │
--- │ Processes 24 octaves (w_octave calls), each with 8 sequential   │
+-- │ Processes 24 octaves (w_octave calls), each with 8 sequential    │
 -- │ f-functions, followed by subkey extraction after every odd       │
 -- │ octave (12 extractions total).                                   │
 -- │                                                                  │
--- │ S-boxes are implemented as Block RAM (RAMB18, 256×32 each).     │
+-- │ S-boxes are implemented as Block RAM (RAMB18, 256×32 each).      │
 -- │ Each f-function takes 2 cycles: ADDR (drive address) then        │
 -- │ COMPUTE (BRAM output valid, apply arithmetic).                   │
 -- │                                                                  │
--- │ Latency: ~396 clock cycles (384 ADDR/COMPUTE + 12 SUBKEY)       │
+-- │ Latency: ~396 clock cycles (384 ADDR/COMPUTE + 12 SUBKEY)        │
 -- └──────────────────────────────────────────────────────────────────┘
 
 library ieee;
@@ -41,7 +41,7 @@ architecture rtl of cast256_ks is
     -- ┌─────────────────────────────────────────────────────────────────┐
     -- │ S-box BRAM signals                                              │
     -- │                                                                 │
-    -- │ Same inference strategy as cast256_enc: 256×32 ROMs            │
+    -- │ Same inference strategy as cast256_enc: 256×32 ROMs             │
     -- │ initialized from package constants, mapped to RAMB18.           │
     -- │ Combinatorial address inputs, registered output (1-cycle).      │
     -- └─────────────────────────────────────────────────────────────────┘
@@ -57,7 +57,7 @@ architecture rtl of cast256_ks is
     attribute ram_style of SBOX4_r : signal is "block";
 
     -- ┌─────────────────────────────────────────────────────────────────┐
-    -- │ FSM                                                              │
+    -- │ FSM                                                             │
     -- │                                                                 │
     -- │ IDLE            : wait for start, latch key into kappa_reg      │
     -- │ ADDR            : addr_comb drives BRAM addresses               │
@@ -70,21 +70,21 @@ architecture rtl of cast256_ks is
     signal state : ks_state_t;
 
     -- ┌─────────────────────────────────────────────────────────────────┐
-    -- │ Counters                                                         │
+    -- │ Counters                                                        │
     -- └─────────────────────────────────────────────────────────────────┘
     signal ks_octave  : integer range 0 to 23;  -- current octave (0..23)
     signal f_ctr      : integer range 0 to 7;   -- f-function within octave (0..7)
     signal subkey_ctr : integer range 0 to 11;  -- subkey extraction index (0..11)
 
     -- ┌─────────────────────────────────────────────────────────────────┐
-    -- │ State registers                                                  │
+    -- │ State registers                                                 │
     -- └─────────────────────────────────────────────────────────────────┘
     signal kappa_reg : kappa_t;
     signal kr_reg    : kr_array_t;
     signal km_reg    : km_array_t;
 
     -- ┌─────────────────────────────────────────────────────────────────┐
-    -- │ BRAM interface                                                   │
+    -- │ BRAM interface                                                  │
     -- └─────────────────────────────────────────────────────────────────┘
     signal addr_a : integer range 0 to 255;
     signal addr_b : integer range 0 to 255;
@@ -118,21 +118,21 @@ begin
     -- ╔═════════════════════════════════════════════════════════════════╗
     -- ║ addr_comb                                                       ║
     -- ║                                                                 ║
-    -- ║ Active in ADDR state. Computes I for the current f-function    ║
+    -- ║ Active in ADDR state. Computes I for the current f-function     ║
     -- ║ and drives the 4 BRAM address inputs.                           ║
     -- ║                                                                 ║
-    -- ║ f-function sequence within each octave (f_ctr 0..7):           ║
-    -- ║   f_ctr 0 : f1(kappa.h) → kappa.g                             ║
-    -- ║   f_ctr 1 : f2(kappa.g) → kappa.f                             ║
-    -- ║   f_ctr 2 : f3(kappa.f) → kappa.e                             ║
-    -- ║   f_ctr 3 : f1(kappa.e) → kappa.d                             ║
-    -- ║   f_ctr 4 : f2(kappa.d) → kappa.c                             ║
-    -- ║   f_ctr 5 : f3(kappa.c) → kappa.b                             ║
-    -- ║   f_ctr 6 : f1(kappa.b) → kappa.a                             ║
-    -- ║   f_ctr 7 : f2(kappa.a) → kappa.h                             ║
+    -- ║ f-function sequence within each octave (f_ctr 0..7):            ║
+    -- ║   f_ctr 0 : f1(kappa.h) → kappa.g                               ║
+    -- ║   f_ctr 1 : f2(kappa.g) → kappa.f                               ║
+    -- ║   f_ctr 2 : f3(kappa.f) → kappa.e                               ║
+    -- ║   f_ctr 3 : f1(kappa.e) → kappa.d                               ║
+    -- ║   f_ctr 4 : f2(kappa.d) → kappa.c                               ║
+    -- ║   f_ctr 5 : f3(kappa.c) → kappa.b                               ║
+    -- ║   f_ctr 6 : f1(kappa.b) → kappa.a                               ║
+    -- ║   f_ctr 7 : f2(kappa.a) → kappa.h                               ║
     -- ║                                                                 ║
-    -- ║ f-type: f_ctr rem 3 → 0=f1  1=f2  2=f3                        ║
-    -- ║ km/kr : TM(ks_octave)(f_ctr) / TR(ks_octave)(f_ctr)           ║
+    -- ║ f-type: f_ctr rem 3 → 0=f1  1=f2  2=f3                          ║
+    -- ║ km/kr : TM(ks_octave)(f_ctr) / TR(ks_octave)(f_ctr)             ║
     -- ╚═════════════════════════════════════════════════════════════════╝
     addr_comb : process(state, ks_octave, f_ctr, kappa_reg) is
         variable d_v   : word32_t;

@@ -2,10 +2,10 @@
 -- │ cast256_enc                                                      │
 -- │                                                                  │
 -- │ CAST-256 encryption datapath (RFC 2612).                         │
--- │ 6 forward quad-rounds (Q) followed by 6 reverse quad-rounds     │
--- │ (QBAR), for a total of 12 rounds × 4 f-functions = 48 steps.    │
+-- │ 6 forward quad-rounds (Q) followed by 6 reverse quad-rounds      │
+-- │ (QBAR), for a total of 12 rounds × 4 f-functions = 48 steps.     │
 -- │                                                                  │
--- │ S-boxes are implemented as Block RAM (RAMB18, 256×32 each).     │
+-- │ S-boxes are implemented as Block RAM (RAMB18, 256×32 each).      │
 -- │ Each f-function takes 2 cycles: ADDR (drive address) then        │
 -- │ COMPUTE (BRAM output valid, apply arithmetic).                   │
 -- │                                                                  │

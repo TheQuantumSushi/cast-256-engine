@@ -1,26 +1,26 @@
 -- ┌──────────────────────────────────────────────────────────────────────────┐
 -- │ tb_cast256.vhd                                                           │
 -- │                                                                          │
--- │ Simulation testbench for the cast256 top-level entity.                  │
+-- │ Simulation testbench for the cast256 top-level entity.                   │
 -- │ Drives one key + plaintext pair through the full handshake, then         │
 -- │ prints the ciphertext hex string to the simulator console.               │
 -- │                                                                          │
--- │ KEY_HEX and PT_HEX are entity generics, so they can be overridden       │
+-- │ KEY_HEX and PT_HEX are entity generics, so they can be overridden        │
 -- │ from the command line without recompiling.                               │
 -- │                                                                          │
--- │ Build (once):                                                             │
+-- │ Build (once):                                                            │
 -- │   ghdl -a  --std=08 cast256_pkg.vhd                                      │
 -- │   ghdl -a  --std=08 cast256_ks.vhd                                       │
 -- │   ghdl -a  --std=08 cast256_enc.vhd                                      │
 -- │   ghdl -a  --std=08 cast256.vhd                                          │
 -- │   ghdl -a  --std=08 tb_cast256.vhd                                       │
--- │   ghdl -e  --std=08 tb_cast256                                            │
+-- │   ghdl -e  --std=08 tb_cast256                                           │
 -- │                                                                          │
 -- │ Run with the default RFC 2612 vector:                                    │
--- │   ghdl -r  --std=08 tb_cast256                                            │
+-- │   ghdl -r  --std=08 tb_cast256                                           │
 -- │                                                                          │
--- │ Run with a custom vector:                                                 │
--- │   ghdl -r  --std=08 tb_cast256                                            │
+-- │ Run with a custom vector:                                                │
+-- │   ghdl -r  --std=08 tb_cast256                                           │
 -- │       -gKEY_HEX=<64 hex chars>                                           │
 -- │       -gPT_HEX=<32 hex chars>                                            │
 -- └──────────────────────────────────────────────────────────────────────────┘
@@ -31,11 +31,11 @@ use ieee.numeric_std.all;
 
 -- ┌──────────────────────────────────────────────────────────────────────────┐
 -- │ Generics                                                                 │
--- │   KEY_HEX [string(1 to 64)] : 256-bit key as 64 lowercase hex chars     │
--- │   PT_HEX  [string(1 to 32)] : 128-bit plaintext as 32 lowercase hex     │
+-- │   KEY_HEX [string(1 to 64)] : 256-bit key as 64 lowercase hex chars      │
+-- │   PT_HEX  [string(1 to 32)] : 128-bit plaintext as 32 lowercase hex      │
 -- │                                                                          │
 -- │ Defaults are the RFC 2612 Appendix A 256-bit test vector.                │
--- │ Expected ciphertext : 4f6a2038286897b9c9870136553317fa                  │
+-- │ Expected ciphertext : 4f6a2038286897b9c9870136553317fa                   │
 -- └──────────────────────────────────────────────────────────────────────────┘
 entity tb_cast256 is
     generic (
