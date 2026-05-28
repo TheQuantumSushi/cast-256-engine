@@ -273,6 +273,54 @@ architecture rtl of crypto is
     signal prev_done  : std_ulogic := '0';
     signal prev_error : std_ulogic := '0';
 
+    ---------------------------------------------------------------------------
+    -- DMA burst adapter (Step 3)
+    --
+    -- gcm.vhd: per-block request model (one {req,addr} pulse per block,
+    --          expects one {data,valid} or {done} response).
+    -- dma_engine: burst model ({start, base, count} then streaming blocks).
+    --
+    -- Read adapter FSM:
+    --   Phase 0 = AAD, Phase 1 = GCTR.
+    --   On first dma_rd_req_o of each phase, start the DMA read burst.
+    --   For each subsequent pulse, forward the next assembled block.
+    --   gcm_wants_rd_r latches "GCM is waiting" so the block can arrive later.
+    --
+    -- Write adapter:
+    --   On first dma_wr_req_o, issue wr_start with the total block count.
+    --   For every dma_wr_req_o, push data into the split FIFO; assert
+    --   dma_wr_done when the block is accepted (wr_block_accepted='1').
+    ---------------------------------------------------------------------------
+
+    -- Adapter phase / state registers
+    signal rd_adp_phase_r   : std_ulogic                    := '0';
+    signal rd_adp_started_r : std_ulogic                    := '0';
+    signal rd_blk_fwd_r     : unsigned(23 downto 0)         := (others => '0');
+    signal rd_blk_total_r   : unsigned(23 downto 0)         := (others => '0');
+    signal gcm_wants_rd_r   : std_ulogic                    := '0';
+    signal wr_adp_started_r : std_ulogic                    := '0';
+    signal gcm_has_wr_r     : std_ulogic                    := '0';
+    signal wr_data_r        : std_ulogic_vector(127 downto 0) := (others => '0');
+
+    -- Adapter → dma_engine control
+    signal rd_start_s          : std_ulogic                    := '0';
+    signal rd_base_addr_s      : std_ulogic_vector(31 downto 0) := (others => '0');
+    signal rd_block_count_s    : std_ulogic_vector(23 downto 0) := (others => '0');
+    signal wr_start_s          : std_ulogic                    := '0';
+    signal wr_base_addr_s      : std_ulogic_vector(31 downto 0) := (others => '0');
+    signal wr_block_count_s    : std_ulogic_vector(23 downto 0) := (others => '0');
+    signal rd_block_consumed_s : std_ulogic                    := '0';
+    signal wr_block_valid_s    : std_ulogic                    := '0';
+    signal wr_block_data_s     : std_ulogic_vector(127 downto 0) := (others => '0');
+
+    -- dma_engine → adapter / p_status wires
+    signal rd_block_data_s     : std_ulogic_vector(127 downto 0);
+    signal rd_block_valid_s    : std_ulogic;
+    signal wr_block_accepted_s : std_ulogic;
+    signal rd_done_s           : std_ulogic;
+    signal wr_done_s           : std_ulogic;
+    signal dma_error_s         : std_ulogic;
+
 begin
 
     ---------------------------------------------------------------------------
@@ -311,13 +359,15 @@ begin
                     csr_busy     <= '0';
                     csr_done     <= '1';
                     tag_computed <= gcm_tag;
-                    if gcm_auth_fail = '1' then
+                    if gcm_auth_fail = '1' or dma_error_s = '1' then
                         csr_error     <= '1';
                         csr_tag_valid <= '0';
                     else
                         csr_error     <= '0';
                         csr_tag_valid <= '1';
                     end if;
+                elsif dma_error_s = '1' then
+                    csr_error <= '1';
                 end if;
             end if;
         end if;
@@ -344,6 +394,121 @@ begin
             end if;
         end if;
     end process p_irq;
+
+    ---------------------------------------------------------------------------
+    -- DMA burst adapter
+    ---------------------------------------------------------------------------
+    p_dma_adapter : process(aclk) is
+    begin
+        if rising_edge(aclk) then
+            -- One-cycle pulse defaults
+            rd_start_s          <= '0';
+            wr_start_s          <= '0';
+            rd_block_consumed_s <= '0';
+            wr_block_valid_s    <= '0';
+            dma_rd_valid        <= '0';
+            -- dma_wr_done is NOT defaulted here; it is a sticky level signal
+            -- that GCM_GCTR_LAST needs to remain '1' across the ~17-cycle
+            -- GHASH window.  Cleared only on csr_start / reset.
+
+            if aresetn = '0' or csr_soft_reset = '1' then
+                rd_adp_phase_r   <= '0';
+                rd_adp_started_r <= '0';
+                rd_blk_fwd_r     <= (others => '0');
+                rd_blk_total_r   <= (others => '0');
+                gcm_wants_rd_r   <= '0';
+                wr_adp_started_r <= '0';
+                gcm_has_wr_r     <= '0';
+                dma_wr_done      <= '0';
+                wr_data_r        <= (others => '0');
+                wr_block_data_s  <= (others => '0');
+            else
+                -- Re-arm on every new GCM operation
+                if csr_start = '1' then
+                    rd_adp_started_r <= '0';
+                    rd_blk_fwd_r     <= (others => '0');
+                    gcm_wants_rd_r   <= '0';
+                    wr_adp_started_r <= '0';
+                    gcm_has_wr_r     <= '0';
+                    dma_wr_done      <= '0';
+                    -- If AAD is zero-length, first read request is GCTR
+                    if aad_len_reg = x"00000000" then
+                        rd_adp_phase_r <= '1';
+                    else
+                        rd_adp_phase_r <= '0';
+                    end if;
+                end if;
+
+                -- ── READ ADAPTER ─────────────────────────────────────────
+                -- dma_rd_req means GCM has moved to a _WAIT state and will
+                -- hold there until dma_rd_valid fires.
+                -- The FIRST request of each phase also starts the DMA burst.
+
+                if dma_rd_req = '1' then
+                    gcm_wants_rd_r <= '1';
+                    if rd_adp_started_r = '0' then
+                        rd_start_s     <= '1';
+                        rd_base_addr_s <= "00" & dma_rd_addr;
+                        if rd_adp_phase_r = '0' then   -- AAD phase
+                            rd_block_count_s <= aad_len_reg(27 downto 4);
+                            rd_blk_total_r   <= unsigned(aad_len_reg(27 downto 4));
+                        else                            -- GCTR phase
+                            rd_block_count_s <= pt_len_reg(27 downto 4);
+                            rd_blk_total_r   <= unsigned(pt_len_reg(27 downto 4));
+                        end if;
+                        rd_blk_fwd_r     <= (others => '0');
+                        rd_adp_started_r <= '1';
+                    end if;
+                end if;
+
+                -- Forward assembled block to GCM when both sides are ready.
+                -- rd_block_valid_s stays high until rd_block_consumed_s fires
+                -- (block_join uses a FIFO with combinatorial valid).
+                if gcm_wants_rd_r = '1' and rd_block_valid_s = '1' then
+                    dma_rd_data         <= rd_block_data_s;
+                    dma_rd_valid        <= '1';
+                    rd_block_consumed_s <= '1';
+                    gcm_wants_rd_r      <= '0';
+                    -- Advance forward counter; switch phase after last AAD block
+                    if rd_blk_fwd_r + 1 = rd_blk_total_r then
+                        rd_adp_started_r <= '0';
+                        rd_adp_phase_r   <= '1';   -- GCTR phase next
+                    end if;
+                    rd_blk_fwd_r <= rd_blk_fwd_r + 1;
+                end if;
+
+                -- ── WRITE ADAPTER ────────────────────────────────────────
+                -- dma_wr_req means GCM has a complete output block ready.
+                -- The FIRST request also sets up the DMA write burst.
+
+                if dma_wr_req = '1' then
+                    wr_data_r    <= dma_wr_data;
+                    gcm_has_wr_r <= '1';
+                    if wr_adp_started_r = '0' then
+                        wr_start_s       <= '1';
+                        wr_base_addr_s   <= "00" & dma_wr_addr;
+                        wr_block_count_s <= pt_len_reg(27 downto 4);
+                        wr_adp_started_r <= '1';
+                    end if;
+                end if;
+
+                -- Keep wr_block_valid asserted until block_split accepts.
+                -- wr_block_accepted_s = split_s_ready is combinatorial and
+                -- fires on the same cycle the block is queued into the FIFO.
+                if gcm_has_wr_r = '1' then
+                    wr_block_valid_s <= '1';
+                    wr_block_data_s  <= wr_data_r;
+                    if wr_block_accepted_s = '1' then
+                        gcm_has_wr_r <= '0';
+                        -- dma_wr_done stays '1' after first acceptance; GCM_GCTR_LAST
+                        -- needs it persistent until gh_done fires (~17 cycles later).
+                        dma_wr_done  <= '1';
+                    end if;
+                end if;
+
+            end if;
+        end if;
+    end process p_dma_adapter;
 
     ---------------------------------------------------------------------------
     -- AXI slave instantiation
@@ -415,21 +580,21 @@ begin
             m0_axi_bresp       => m0_axi_bresp,
             m0_axi_bvalid      => m0_axi_bvalid,
             m0_axi_bready      => m0_axi_bready,
-            rd_start           => '0',              -- Step 3
-            rd_base_addr       => (others => '0'),  -- Step 3
-            rd_block_count     => (others => '0'),  -- Step 3
-            wr_start           => '0',              -- Step 3
-            wr_base_addr       => (others => '0'),  -- Step 3
-            wr_block_count     => (others => '0'),  -- Step 3
-            rd_block_data      => open,             -- Step 3
-            rd_block_valid     => open,             -- Step 3
-            rd_block_consumed  => '0',              -- Step 3
-            wr_block_data      => (others => '0'),  -- Step 3
-            wr_block_valid     => '0',              -- Step 3
-            wr_block_accepted  => open,             -- Step 3
-            rd_done            => open,             -- Step 3
-            wr_done            => open,             -- Step 3
-            dma_error          => open              -- Step 3
+            rd_start           => rd_start_s,
+            rd_base_addr       => rd_base_addr_s,
+            rd_block_count     => rd_block_count_s,
+            wr_start           => wr_start_s,
+            wr_base_addr       => wr_base_addr_s,
+            wr_block_count     => wr_block_count_s,
+            rd_block_data      => rd_block_data_s,
+            rd_block_valid     => rd_block_valid_s,
+            rd_block_consumed  => rd_block_consumed_s,
+            wr_block_data      => wr_block_data_s,
+            wr_block_valid     => wr_block_valid_s,
+            wr_block_accepted  => wr_block_accepted_s,
+            rd_done            => rd_done_s,
+            wr_done            => wr_done_s,
+            dma_error          => dma_error_s
         );
 
     ---------------------------------------------------------------------------
@@ -460,15 +625,15 @@ begin
             tag_o          => gcm_tag,
             done_o         => gcm_done,
             auth_fail_o    => gcm_auth_fail,
-            -- DMA interface: Step 3 replaces stub drivers with the burst adapter
+            -- DMA interface: wired to p_dma_adapter burst bridge
             dma_rd_addr_o  => dma_rd_addr,
             dma_rd_req_o   => dma_rd_req,
-            dma_rd_data_i  => dma_rd_data,   -- stub: '0' until Step 3
-            dma_rd_valid_i => dma_rd_valid,  -- stub: '0' until Step 3
+            dma_rd_data_i  => dma_rd_data,
+            dma_rd_valid_i => dma_rd_valid,
             dma_wr_addr_o  => dma_wr_addr,
             dma_wr_data_o  => dma_wr_data,
             dma_wr_req_o   => dma_wr_req,
-            dma_wr_done_i  => dma_wr_done    -- stub: '0' until Step 3
+            dma_wr_done_i  => dma_wr_done
         );
 
 end architecture rtl;
