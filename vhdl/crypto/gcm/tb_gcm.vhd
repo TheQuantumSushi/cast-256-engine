@@ -178,15 +178,16 @@ begin
     -- ╚═════════════════════════════════════════════════════════════════╝
     dma_read_mock : process (aclk) is
         variable pending   : boolean := false;
-        variable req_idx   : integer := 0;
         variable countdown : integer := 0;
+        variable req_idx   : integer := 0;
     begin
         if rising_edge(aclk) then
             dma_rd_valid_i <= '0';
             if aresetn = '0' then
-                pending := false;
+                pending        := false;
+                dma_rd_valid_i <= '0';
             else
-                if dma_rd_req_o = '1' then
+                if dma_rd_req_o = '1' and not pending then
                     req_idx   := to_integer(unsigned(dma_rd_addr_o(29 downto 4)));
                     countdown := RD_LATENCY;
                     pending   := true;
@@ -266,11 +267,26 @@ begin
         sim_mem(2) := PT_BLOCK_1;
         -- sim_mem(3), sim_mem(4): written by Test 1 (CT blocks)
 
+        -- ── Print fixed test parameters ───────────────────────────────
+        report "##################################################";
+        report "  GCM Testbench - CAST-256-GCM / 256-bit key";
+        report "##################################################";
+        report "  Key    : " & to_hstring(KEY(255 downto 128))
+                             & to_hstring(KEY(127 downto   0));
+        report "  IV     : " & to_hstring(IV);
+        report "  AAD    : " & to_hstring(AAD_BLOCK);
+        report "  PT[0]  : " & to_hstring(PT_BLOCK_0);
+        report "  PT[1]  : " & to_hstring(PT_BLOCK_1);
+        report "  AAD len: 16 bytes  |  PT len: 32 bytes";
+        report "##################################################";
+
         -- ══════════════════════════════════════════════════════════════
         -- Test 1 — Encryption
         --   AAD at 0x000 (16 B), PT at 0x010 (32 B), CT → 0x030
         -- ══════════════════════════════════════════════════════════════
-        report "--- Test 1: Encryption ---";
+        report "--------------------------------------------------";
+        report "  TEST 1 : Encryption";
+        report "--------------------------------------------------";
 
         mode_i     <= '0';
         key_i      <= KEY;
@@ -293,14 +309,22 @@ begin
         enc_tag <= tag_o;
         wait for CLK_PERIOD;  -- enc_tag signal now stable
 
-        report "Test 1 PASS: encryption done, tag = " & to_hstring(tag_o);
+        report "  CT[0]  : " & to_hstring(sim_mem(3));
+        report "  CT[1]  : " & to_hstring(sim_mem(4));
+        report "  Tag    : " & to_hstring(tag_o);
+        report "  PASS: encryption complete, auth_fail = 0";
 
         -- ══════════════════════════════════════════════════════════════
         -- Test 2 — Decryption round-trip
         --   CT at 0x030 (from Test 1), decrypt → PT at 0x010
         --   Verifies: recovered PT = original PT; auth_fail_o = 0
         -- ══════════════════════════════════════════════════════════════
-        report "--- Test 2: Decryption round-trip ---";
+        report "--------------------------------------------------";
+        report "  TEST 2 : Decryption round-trip";
+        report "--------------------------------------------------";
+        report "  CT[0]  : " & to_hstring(sim_mem(3));
+        report "  CT[1]  : " & to_hstring(sim_mem(4));
+        report "  Tag    : " & to_hstring(enc_tag);
 
         wait for 3 * CLK_PERIOD;
 
@@ -329,19 +353,30 @@ begin
             report "Test 2 FAIL: recovered PT block 1 does not match original"
             severity failure;
 
-        report "Test 2 PASS: plaintext recovered correctly";
+        report "  PT[0] recovered : " & to_hstring(sim_mem(1));
+        report "  PT[1] recovered : " & to_hstring(sim_mem(2));
+        report "  PT[0] expected  : " & to_hstring(PT_BLOCK_0);
+        report "  PT[1] expected  : " & to_hstring(PT_BLOCK_1);
+        report "  PASS: plaintext recovered correctly, auth_fail = 0";
 
         -- ══════════════════════════════════════════════════════════════
         -- Test 3 — Authentication failure detection
         --   Flip 1 bit in CT block 0; present the original (correct) tag.
         --   Verifies: done_o fires; auth_fail_o = 1.
         -- ══════════════════════════════════════════════════════════════
-        report "--- Test 3: Auth-fail detection ---";
+        report "--------------------------------------------------";
+        report "  TEST 3 : Authentication failure detection";
+        report "--------------------------------------------------";
+        report "  Corrupting CT[0] LSB (XOR 0x...0001)";
+        report "  CT[0] before : " & to_hstring(sim_mem(3));
 
         wait for 3 * CLK_PERIOD;
 
         -- Corrupt LSB of CT block 0
         sim_mem(3) := sim_mem(3) xor x"00000000000000000000000000000001";
+
+        report "  CT[0] after  : " & to_hstring(sim_mem(3));
+        report "  Tag (unchanged): " & to_hstring(enc_tag);
 
         mode_i     <= '1';
         key_i      <= KEY;
@@ -360,10 +395,13 @@ begin
             report "Test 3 FAIL: auth_fail_o not set on corrupted ciphertext"
             severity failure;
 
-        report "Test 3 PASS: authentication failure correctly detected";
+        report "  auth_fail_o = 1  (tampered ciphertext correctly rejected)";
+        report "  PASS: authentication failure correctly detected";
 
         -- ──────────────────────────────────────────────────────────────
-        report "ALL TESTS PASSED";
+        report "--------------------------------------------------";
+        report "  ALL TESTS PASSED";
+        report "--------------------------------------------------";
         std.env.finish;
 
     end process stimulus;
