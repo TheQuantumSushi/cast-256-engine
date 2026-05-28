@@ -138,7 +138,7 @@ begin
     -- │ DUT instantiation                    │
     -- └──────────────────────────────────────┘
     -- Channel 0 is driven by the stimulus process.
-    -- Channels 1-5 are idle (start tied low, outputs open).
+    -- Channel 1 is idle (start tied low, output open).
     u_dut : entity work.cast256
         port map (
             aclk            => aclk,
@@ -151,27 +151,11 @@ begin
             encrypt_start_0 => encrypt_start,
             ciphertext_0    => ciphertext,
             enc_done_0      => enc_done,
-            -- ── Channels 1-5 (idle) ────────────────────────────────────
+            -- ── Channel 1 (idle) ───────────────────────────────────────
             plaintext_1     => (others => '0'),
             encrypt_start_1 => '0',
             ciphertext_1    => open,
-            enc_done_1      => open,
-            plaintext_2     => (others => '0'),
-            encrypt_start_2 => '0',
-            ciphertext_2    => open,
-            enc_done_2      => open,
-            plaintext_3     => (others => '0'),
-            encrypt_start_3 => '0',
-            ciphertext_3    => open,
-            enc_done_3      => open,
-            plaintext_4     => (others => '0'),
-            encrypt_start_4 => '0',
-            ciphertext_4    => open,
-            enc_done_4      => open,
-            plaintext_5     => (others => '0'),
-            encrypt_start_5 => '0',
-            ciphertext_5    => open,
-            enc_done_5      => open
+            enc_done_1      => open
         );
 
     -- ┌──────────────────────────────────────┐

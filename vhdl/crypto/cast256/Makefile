@@ -117,10 +117,132 @@ run: elaborate
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Vivado synthesis and timing analysis
+#
+# Runs Vivado in batch mode, tee-ing all output to vivado_synth.log so the
+# full transcript is visible while also being parseable afterwards.
+# Once synthesis completes, AWK_SYNTH_SUMMARY extracts and formats the key
+# metrics from vivado_synth.log and utilization.rpt into a compact table.
+#
+# Metrics reported:
+#   Timing     : Fmax, WNS, critical path, pass/fail status
+#   Resources  : LUT6, total LUTs (%), RAMB18E1, FDRE, total cells
+#   Per-module : cast256_enc cells, cast256_ks cells
 # ─────────────────────────────────────────────────────────────────────────────
+
+define AWK_SYNTH_SUMMARY
+BEGIN {
+    fmax = "N/A"; wns = "N/A"; crit = "N/A"; ts = "N/A"
+    lut6 = 0; lut5 = 0; lut4 = 0; lut3 = 0; lut2 = 0; lut1 = 0
+    ramb18 = 0; fdre = 0; total_cells = 0
+    enc_cells = -1; ks_cells = -1
+    total_luts = "N/A"; lut_pct = "N/A"
+}
+
+function commas(n,    s, r) {
+    s = sprintf("%d", n + 0)
+    r = ""
+    while (length(s) > 3) {
+        r = "," substr(s, length(s) - 2) r
+        s = substr(s, 1, length(s) - 3)
+    }
+    return s r
+}
+
+# ── Timing metrics — TCL summary block at end of vivado_synth.log ────────────
+# These patterns only appear in the synth log, not in any report file.
+!/^#/ && / Estimated Fmax/ {
+    tmp = $$0; sub(/.*: /, "", tmp); fmax = tmp
+}
+!/^#/ && / Worst slack/ {
+    tmp = $$0; sub(/.*: /, "", tmp); sub(/ ns.*/, "", tmp); wns = tmp " ns"
+}
+!/^#/ && / Critical path/ {
+    tmp = $$0; sub(/.*: /, "", tmp); sub(/ ns.*/, "", tmp); crit = tmp " ns"
+}
+!/^#/ && / Status/ {
+    tmp = $$0; sub(/.*Status[[:space:]]*: /, "", tmp); ts = tmp
+}
+
+# ── Cell usage table: |N  |CellName  | Count|  (n=5 when split by |) ──────
+# ── Instance areas  : |N  |Instance  |Module| Cells| (n=6)            ──────
+# These rows start with |<digit> which cannot appear in utilization.rpt.
+/^\|[0-9]/ {
+    n = split($$0, f, "|")
+
+    if (n == 5) {
+        cell = f[3]; gsub(/ /, "", cell)
+        cnt  = f[4]; gsub(/ /, "", cnt)
+        if      (cell == "LUT6")     lut6   = cnt + 0
+        else if (cell == "LUT5")     lut5   = cnt + 0
+        else if (cell == "LUT4")     lut4   = cnt + 0
+        else if (cell == "LUT3")     lut3   = cnt + 0
+        else if (cell == "LUT2")     lut2   = cnt + 0
+        else if (cell == "LUT1")     lut1   = cnt + 0
+        else if (cell == "RAMB18E1") ramb18 = cnt + 0
+        else if (cell == "FDRE")     fdre   = cnt + 0
+    }
+
+    if (n == 6) {
+        inst = f[3]; gsub(/ /, "", inst)
+        mod  = f[4]; gsub(/ /, "", mod)
+        cnt  = f[5]; gsub(/ /, "", cnt)
+        if      (inst == "top")         total_cells = cnt + 0
+        else if (mod  == "cast256_enc") enc_cells   = cnt + 0
+        else if (mod  == "cast256_ks")  ks_cells    = cnt + 0
+    }
+}
+
+# ── utilization.rpt: "| Slice LUTs* | used | fixed | avail | util% |" ───────
+# "LUT as Logic" / "LUT as Memory" sub-rows are excluded by the second guard.
+/\| Slice LUTs/ && !/LUT as/ {
+    n = split($$0, f, "|")
+    v = f[3]; gsub(/ /, "", v); total_luts = v
+    p = f[6]; gsub(/ /, "", p); lut_pct    = p
+}
+
+END {
+    if (total_luts == "N/A") total_luts = lut1+lut2+lut3+lut4+lut5+lut6
+    if (enc_cells  <  0)     enc_cells  = "N/A"
+    if (ks_cells   <  0)     ks_cells   = "N/A"
+
+    green = "\033[0;32m"; red = "\033[0;31m"; bold = "\033[1m"; rst = "\033[0m"
+    col   = (ts ~ /MEETS TIMING/ && ts !~ /DOES NOT/) ? green : red
+    hr    = "  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    printf "\n%s\n", hr
+    printf "  %sSynthesis Summary — cast256 (xc7z010clg400-1, 10.0 ns target)%s\n", bold, rst
+    printf "%s\n\n", hr
+
+    printf "  %-28s  %s\n",         "Fmax",                  fmax
+    printf "  %-28s  %s\n",         "WNS",                   wns
+    printf "  %-28s  %s\n",         "Critical path",         crit
+    printf "  %-28s  %s%s%s\n",     "Status", col, ts, rst
+    printf "\n"
+    printf "  %-28s  %s\n",         "LUT6",                  commas(lut6)
+    if (lut_pct != "N/A")
+        printf "  %-28s  %s  (%s%% of device)\n", \
+                                    "Total LUTs (all types)", commas(total_luts+0), lut_pct
+    else
+        printf "  %-28s  %s\n",     "Total LUTs (all types)", commas(total_luts+0)
+    printf "  %-28s  %s\n",         "RAMB18E1",              commas(ramb18)
+    printf "  %-28s  %s\n",         "FDRE (flip-flops)",     commas(fdre)
+    printf "  %-28s  %s\n",         "Total cells",           commas(total_cells)
+    printf "  %-28s  %s\n",         "cast256_enc cells",     (enc_cells == "N/A" ? "N/A" : commas(enc_cells+0))
+    printf "  %-28s  %s\n",         "cast256_ks cells",      (ks_cells  == "N/A" ? "N/A" : commas(ks_cells+0))
+    printf "\n%s\n\n", hr
+}
+endef
+export AWK_SYNTH_SUMMARY
+
 .PHONY: synth
 synth: $(TCL_SCRIPT)
-	$(VIVADO) -mode batch -source $(TCL_SCRIPT)
+	$(VIVADO) -mode batch -source $(TCL_SCRIPT) 2>&1 | tee vivado_synth.log
+	@echo ""
+	@if [ -f utilization.rpt ]; then \
+		awk "$$AWK_SYNTH_SUMMARY" vivado_synth.log utilization.rpt; \
+	else \
+		echo "  (utilization.rpt not found — synthesis may have failed)"; \
+	fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Clean
@@ -133,6 +255,6 @@ clean:
 
 .PHONY: cleanall
 cleanall: clean
-	rm -f timing_summary.rpt utilization.rpt
+	rm -f timing_summary.rpt utilization.rpt vivado_synth.log
 	rm -f vivado.jou vivado.log
 	rm -rf .Xil
