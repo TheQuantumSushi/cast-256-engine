@@ -1,11 +1,8 @@
 -- DMA Write Engine: stores 128-bit blocks (4 x 32-bit AXI4-Lite writes) to DDR.
--- Includes a 2-entry FF-based write FIFO.  Big-endian: word 0 (bits 127:96) first.
--- wr_done is sticky; WR_BLOCK_DONE state eliminated (merged into WR_WAIT_BRESP)
--- saving one clock cycle per block vs. the six-state version.
---
--- Indentation technique: process-local procedures keep each when-clause body
--- to at most two visible if-levels; architecture-level select_word avoids an
--- inline case for wdata_i.
+-- Incoming 128-bit blocks feed block_split, which buffers them in a 4-deep FIFO
+-- and streams them as 32-bit words.  The FSM consumes one word per AXI write
+-- transaction and tracks word index for block-boundary detection.
+-- Big-endian: word 0 (bits 127:96) first.  wr_done is sticky.
 
 library ieee;
 use ieee.std_logic_1164.all;
@@ -46,41 +43,26 @@ architecture rtl of dma_write_engine is
 
     constant RESP_OKAY : std_ulogic_vector(1 downto 0) := "00";
 
-    -- Return the idx-th big-endian 32-bit word of a 128-bit block.
-    function select_word(idx : unsigned(1 downto 0);
-                         buf : std_ulogic_vector(127 downto 0))
-        return std_ulogic_vector is
-    begin
-        case idx is
-            when "00"   => return buf(127 downto 96);
-            when "01"   => return buf( 95 downto 64);
-            when "10"   => return buf( 63 downto 32);
-            when others => return buf( 31 downto  0);
-        end case;
-    end function;
+    ---------------------------------------------------------------------------
+    -- block_split: buffers 128-bit blocks and streams them as 32-bit words
+    ---------------------------------------------------------------------------
+    signal split_s_ready : std_ulogic;
+    signal split_m_data  : std_ulogic_vector(31 downto 0);
+    signal split_m_valid : std_ulogic;
+    signal split_m_ready : std_ulogic := '0';
 
     ---------------------------------------------------------------------------
-    -- 2-entry write FIFO (FF-based, single-bit index arithmetic)
+    -- Write engine FSM
     ---------------------------------------------------------------------------
-    type fifo_array_t is array (0 to 1) of std_ulogic_vector(127 downto 0);
-    signal fifo_mem    : fifo_array_t := (others => (others => '0'));
-    signal fifo_wr_ptr : unsigned(1 downto 0) := (others => '0');
-    signal fifo_rd_ptr : unsigned(1 downto 0) := (others => '0');
-    signal fifo_count  : unsigned(1 downto 0);   -- combinatorial, single driver
-
-    signal wr_block_accepted_i : std_ulogic := '0';
-
-    ---------------------------------------------------------------------------
-    -- Write engine FSM (5 states; WR_BLOCK_DONE merged into WR_WAIT_BRESP)
-    ---------------------------------------------------------------------------
-    type state_t is (WR_IDLE, WR_ISSUE_AW_W, WR_WAIT_AW, WR_WAIT_W, WR_WAIT_BRESP);
+    type state_t is (WR_IDLE, WR_ISSUE_AW_W, WR_WAIT_AW, WR_WAIT_W,
+                     WR_WAIT_BRESP, WR_WAIT_SPLIT);
     signal state : state_t := WR_IDLE;
 
     signal wr_addr        : unsigned(29 downto 0) := (others => '0');
-    signal wr_word_idx    : unsigned(1 downto 0)  := (others => '0');
+    signal wr_word_idx    : unsigned( 1 downto 0) := (others => '0');
     signal wr_blocks_done : unsigned(23 downto 0) := (others => '0');
     signal wr_total       : unsigned(23 downto 0) := (others => '0');
-    signal wr_buf         : std_ulogic_vector(127 downto 0) := (others => '0');
+    signal wr_word_latch  : std_ulogic_vector(31 downto 0) := (others => '0');
     signal aw_acked       : std_ulogic := '0';
     signal w_acked        : std_ulogic := '0';
 
@@ -94,56 +76,47 @@ architecture rtl of dma_write_engine is
 
 begin
 
-    fifo_count <= fifo_wr_ptr - fifo_rd_ptr;
+    u_split : entity work.block_split(rtl)
+        generic map(d => 4)
+        port map(
+            aclk    => aclk,
+            aresetn => aresetn,
+            s_data  => wr_block_data,
+            s_valid => wr_block_valid,
+            s_ready => split_s_ready,
+            m_data  => split_m_data,
+            m_valid => split_m_valid,
+            m_ready => split_m_ready
+        );
 
-    m_axi_awvalid     <= awvalid_i;
-    m_axi_awaddr      <= awaddr_i;
-    m_axi_wvalid      <= wvalid_i;
-    m_axi_wdata       <= wdata_i;
-    m_axi_wstrb       <= "1111";
-    m_axi_bready      <= bready_i;
-    wr_block_accepted <= wr_block_accepted_i;
-    wr_done           <= wr_done_i;
-    wr_error          <= wr_error_i;
+    wr_block_accepted <= split_s_ready;
 
-    ---------------------------------------------------------------------------
-    -- FIFO push: independent process, accepts ciphertext from GCM datapath
-    ---------------------------------------------------------------------------
-    p_fifo_push : process(aclk)
-    begin
-        if rising_edge(aclk) then
-            if aresetn = '0' then
-                fifo_wr_ptr         <= (others => '0');
-                wr_block_accepted_i <= '0';
-            else
-                wr_block_accepted_i <= '0';
-                if wr_block_valid = '1' and fifo_count < 2 then
-                    fifo_mem(to_integer(fifo_wr_ptr(0 downto 0))) <= wr_block_data;
-                    fifo_wr_ptr         <= fifo_wr_ptr + 1;
-                    wr_block_accepted_i <= '1';
-                end if;
-            end if;
-        end if;
-    end process p_fifo_push;
+    m_axi_awvalid <= awvalid_i;
+    m_axi_awaddr  <= awaddr_i;
+    m_axi_wvalid  <= wvalid_i;
+    m_axi_wdata   <= wdata_i;
+    m_axi_wstrb   <= "1111";
+    m_axi_bready  <= bready_i;
+    wr_done       <= wr_done_i;
+    wr_error      <= wr_error_i;
 
     ---------------------------------------------------------------------------
-    -- Write engine FSM
+    -- Write FSM
     ---------------------------------------------------------------------------
     p_write : process(aclk)
 
-        -- Pop the next FIFO entry into wr_buf and begin AW+W arbitration.
+        -- Latch the current word from split and start an AW+W transaction.
+        -- wr_word_idx must be set by the caller before invoking this.
         procedure pop_and_start is
         begin
-            wr_buf      <= fifo_mem(to_integer(fifo_rd_ptr(0 downto 0)));
-            fifo_rd_ptr <= fifo_rd_ptr + 1;
-            wr_word_idx <= (others => '0');
-            aw_acked    <= '0';
-            w_acked     <= '0';
-            state       <= WR_ISSUE_AW_W;
+            wr_word_latch <= split_m_data;
+            split_m_ready <= '1';
+            aw_acked      <= '0';
+            w_acked       <= '0';
+            state         <= WR_ISSUE_AW_W;
         end procedure;
 
-        -- Track simultaneous AW and W handshakes; advance state when both done.
-        -- Uses variables so the same-cycle ack is visible without an extra flop.
+        -- Track simultaneous AW and W handshakes; move to BRESP when both done.
         procedure check_aw_w_acks is
             variable aw_done : std_ulogic;
             variable w_done  : std_ulogic;
@@ -168,23 +141,27 @@ begin
             end if;
         end procedure;
 
-        -- Process a successful BRESP: advance within block or complete block.
-        -- Eliminates the old WR_BLOCK_DONE state; saves one cycle per block.
+        -- Advance after a successful BRESP.
         procedure on_bresp_ok is
         begin
             bready_i <= '0';
             wr_addr  <= wr_addr + 4;
             if wr_word_idx /= "11" then
+                -- More words remain in this block.
                 wr_word_idx <= wr_word_idx + 1;
-                aw_acked    <= '0';
-                w_acked     <= '0';
-                state       <= WR_ISSUE_AW_W;
+                if split_m_valid = '1' then
+                    pop_and_start;
+                else
+                    state <= WR_WAIT_SPLIT;
+                end if;
             else
+                -- Block complete.
+                wr_word_idx    <= (others => '0');
                 wr_blocks_done <= wr_blocks_done + 1;
                 if wr_blocks_done + 1 = wr_total then
                     wr_done_i <= '1';
                     state     <= WR_IDLE;
-                elsif fifo_count > 0 then
+                elsif split_m_valid = '1' then
                     pop_and_start;
                 else
                     state <= WR_IDLE;
@@ -194,6 +171,7 @@ begin
 
     begin
         if rising_edge(aclk) then
+            split_m_ready <= '0';  -- default: one-cycle pulse only
             if aresetn = '0' then
                 state          <= WR_IDLE;
                 awvalid_i      <= '0';
@@ -205,7 +183,6 @@ begin
                 wr_word_idx    <= (others => '0');
                 wr_blocks_done <= (others => '0');
                 wr_total       <= (others => '0');
-                fifo_rd_ptr    <= (others => '0');
                 aw_acked       <= '0';
                 w_acked        <= '0';
             else
@@ -220,10 +197,12 @@ begin
                             wr_addr        <= unsigned(wr_base_addr(29 downto 0));
                             wr_total       <= unsigned(wr_block_count);
                             wr_blocks_done <= (others => '0');
+                            wr_word_idx    <= (others => '0');
                             if unsigned(wr_block_count) = 0 then
                                 wr_done_i <= '1';
                             end if;
-                        elsif wr_total > 0 and fifo_count > 0 then
+                        elsif wr_total > 0 and split_m_valid = '1' then
+                            wr_word_idx <= (others => '0');
                             pop_and_start;
                         end if;
 
@@ -231,7 +210,7 @@ begin
                         awvalid_i <= '1';
                         awaddr_i  <= std_ulogic_vector(wr_addr);
                         wvalid_i  <= '1';
-                        wdata_i   <= select_word(wr_word_idx, wr_buf);
+                        wdata_i   <= wr_word_latch;
                         check_aw_w_acks;
 
                     when WR_WAIT_AW =>
@@ -257,6 +236,12 @@ begin
                             else
                                 on_bresp_ok;
                             end if;
+                        end if;
+
+                    -- Waiting for block_split to have the next word ready.
+                    when WR_WAIT_SPLIT =>
+                        if split_m_valid = '1' then
+                            pop_and_start;
                         end if;
 
                     when others =>
