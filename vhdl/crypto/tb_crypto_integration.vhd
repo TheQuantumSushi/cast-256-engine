@@ -7,20 +7,25 @@
 -- │ a simple memory model.                                           │
 -- │                                                                  │
 -- │ Tests run unconditionally:                                       │
--- │   T0 – Reset: CSR reads zero after hardware reset               │
--- │   T1 – Config write: write KEY / IV / addresses via AXI         │
--- │   T2 – Bounds check: PT_ADDR with bits[31:30] set → SLVERR      │
--- │   T3 – Encrypt, zero-length AAD + PT: START → DONE; tag stable  │
--- │   T4 – Decrypt, correct tag: START → DONE; auth_fail = 0        │
--- │   T5 – Decrypt, corrupted tag: START → DONE; CSR.ERROR = 1      │
--- │   T6 – Soft reset: CSR.SOFT_RESET clears DONE/TAG_VALID         │
+-- │   T0        – Reset: CSR reads zero after hardware reset         │
+-- │   T1        – Config write: write KEY / IV / addresses via AXI   │
+-- │   T2        – Bounds check: PT_ADDR bits[31:30] set → SLVERR     │
+-- │   T3        – Encrypt, zero-length: START → DONE; tag stable     │
+-- │   T4        – Decrypt, correct tag: DONE; auth_fail = 0          │
+-- │   T5        – Decrypt, corrupted tag: DONE; CSR.ERROR = 1        │
+-- │   T6        – Soft reset: SOFT_RESET clears DONE/TAG_VALID       │
+-- │   T_SWB     – START while BUSY: second START pulse → SLVERR      │
+-- │   T_SRESET_MID – SOFT_RESET mid-op: BUSY clears immediately      │
 -- │                                                                  │
 -- │ Tests gated by STEP3_IMPLEMENTED (default true):                 │
--- │   T7  – Encrypt 1-block AAD + 2-block PT, verify TAG_VALID      │
--- │   T8a – Decrypt round-trip (correct CT + tag) → PT recovered    │
--- │   T8b – Decrypt with tampered CT → CSR.ERROR = 1               │
--- │   T9  – Back-to-back encrypt (key cache hit, adapter re-arm)    │
--- │   T10 – Encrypt with AAD=0, PT=1 block (GCTR-only DMA path)    │
+-- │   T7          – Encrypt 1-block AAD + 2-block PT, verify TAG    │
+-- │   T8a         – Decrypt round-trip → PT recovered               │
+-- │   T8b         – Tampered CT → CSR.ERROR = 1                     │
+-- │   T9          – Back-to-back encrypt (key cache, adapter re-arm)│
+-- │   T10         – AAD=0, PT=1 block (GCTR-only DMA path)          │
+-- │   T11         – 4-block PT burst, no AAD; round-trip            │
+-- │   T_DMA_RD_ERR – Read SLVERR from memory → csr_error=1          │
+-- │   T_DMA_WR_ERR – Write SLVERR from memory → csr_error=1         │
 -- │                                                                  │
 -- │ CSR register (0x058) bit layout:                                 │
 -- │   [0]  START      (W)                                            │
@@ -85,6 +90,18 @@ architecture bench of tb_crypto_integration is
     -- T10: single PT block, no AAD
     constant PT_BLOCK_T10 : std_ulogic_vector(127 downto 0) :=
         x"aabbccdd11223344aabbccdd11223344";
+
+    -- T11: 4-block PT burst (64 bytes, base 0x070 = block 7; CT base 0x0B0 = block 11)
+    constant PT_BLOCK_2 : std_ulogic_vector(127 downto 0) :=
+        x"303132333435363738393a3b3c3d3e3f";
+    constant PT_BLOCK_3 : std_ulogic_vector(127 downto 0) :=
+        x"404142434445464748494a4b4c4d4e4f";
+    constant ADDR_PT4   : std_ulogic_vector(29 downto 0) :=
+        std_ulogic_vector(to_unsigned(112, 30));  -- 0x070 = block 7
+    constant ADDR_CT4   : std_ulogic_vector(29 downto 0) :=
+        std_ulogic_vector(to_unsigned(176, 30));  -- 0x0B0 = block 11
+    constant LEN_PT4    : std_ulogic_vector(29 downto 0) :=
+        std_ulogic_vector(to_unsigned( 64, 30));  -- 4 × 16 bytes
 
     -- Memory layout (byte addresses, 16-byte aligned):
     --   0x000 : AAD block
@@ -155,6 +172,10 @@ architecture bench of tb_crypto_integration is
 
     signal enc_tag   : std_ulogic_vector(127 downto 0) := (others => '0');
     signal enc_tag_t9: std_ulogic_vector(127 downto 0) := (others => '0');
+
+    -- DMA error injection: when set, dma_mem_model returns non-OKAY responses
+    signal dma_inject_rd_error : std_ulogic := '0';
+    signal dma_inject_wr_error : std_ulogic := '0';
 
 begin
 
@@ -254,7 +275,11 @@ begin
                             when 3 => m0_rdata <= sim_mem(rd_blk)( 31 downto  0);
                             when others => m0_rdata <= (others => '0');
                         end case;
-                        m0_rresp   <= "00";
+                        if dma_inject_rd_error = '1' then
+                            m0_rresp <= "10";
+                        else
+                            m0_rresp <= "00";
+                        end if;
                         m0_rvalid  <= '1';
                         rd_pending := false;
                     end if;
@@ -299,7 +324,11 @@ begin
                         when others => null;
                     end case;
                     sim_mem(wr_blk) := wr_data_buf;
-                    m0_bresp  <= "00";
+                    if dma_inject_wr_error = '1' then
+                        m0_bresp <= "10";
+                    else
+                        m0_bresp <= "00";
+                    end if;
                     m0_bvalid <= '1';
                 end if;
 
@@ -606,6 +635,55 @@ begin
         report "  PASS: T6 soft reset";
 
         -- ══════════════════════════════════════════════════════════════
+        -- T_SWB — START while BUSY (Step 4 validation)
+        -- Key schedule runs ~500 cycles; second START must be rejected.
+        -- ══════════════════════════════════════════════════════════════
+        report "--------------------------------------------------";
+        report "  T_SWB: START while BUSY -> SLVERR";
+        report "--------------------------------------------------";
+
+        configure_zero_length;
+        start_engine('0');
+        axi_write(x"058", x"00000001", bresp);
+        assert bresp = "10"
+            report "T_SWB FAIL: expected SLVERR on START while BUSY, got " &
+                   to_hstring("00" & bresp)
+            severity failure;
+        report "  BRESP = " & to_hstring("00" & bresp) & "  (expect 10 = SLVERR)";
+        wait_done("T_SWB", TIMEOUT_SHORT, csr);
+        assert csr(9) = '1'
+            report "T_SWB FAIL: original operation did not complete"
+            severity failure;
+        report "  PASS: T_SWB START while BUSY rejected";
+
+        -- ══════════════════════════════════════════════════════════════
+        -- T_SRESET_MID — SOFT_RESET while operation in progress
+        -- p_status clears csr_busy on the same edge csr_soft_reset='1'.
+        -- ══════════════════════════════════════════════════════════════
+        report "--------------------------------------------------";
+        report "  T_SRESET_MID: SOFT_RESET while BUSY -> BUSY clears";
+        report "--------------------------------------------------";
+
+        wait for 3 * CLK_PERIOD;
+        configure_zero_length;
+        start_engine('0');
+        axi_read(x"058", rdata);
+        assert rdata(8) = '1'
+            report "T_SRESET_MID FAIL: BUSY not seen after START"
+            severity failure;
+        axi_wr(x"058", x"00000002");
+        wait for 5 * CLK_PERIOD;
+        axi_read(x"058", rdata);
+        assert rdata(8) = '0'
+            report "T_SRESET_MID FAIL: BUSY not cleared after mid-op SOFT_RESET"
+            severity failure;
+        assert rdata(9) = '0'
+            report "T_SRESET_MID FAIL: DONE unexpectedly set after SOFT_RESET"
+            severity failure;
+        report "  CSR after mid-op SOFT_RESET = " & to_hstring(rdata);
+        report "  PASS: T_SRESET_MID mid-operation soft reset";
+
+        -- ══════════════════════════════════════════════════════════════
         -- T7 / T8 / T9 / T10 — DMA payload tests
         -- ══════════════════════════════════════════════════════════════
         if STEP3_IMPLEMENTED then
@@ -849,9 +927,159 @@ begin
             report "  T10 PT recovered = " & to_hstring(sim_mem(5));
             report "  PASS: T10 AAD=0, PT=1 block";
 
+            -- ── T11 : 4-block PT burst, no AAD ────────────────────────
+            -- Stresses burst counter, block_join/split FIFOs, and
+            -- address generation across 4 consecutive 128-bit blocks.
+            report "--------------------------------------------------";
+            report "  T11: 4-block PT burst, AAD=0 (DMA stress)";
+            report "--------------------------------------------------";
+
+            wait for 5 * CLK_PERIOD;
+
+            sim_mem(7)  := PT_BLOCK_0;
+            sim_mem(8)  := PT_BLOCK_1;
+            sim_mem(9)  := PT_BLOCK_2;
+            sim_mem(10) := PT_BLOCK_3;
+
+            write_key(KEY);
+            write_iv(IV);
+            axi_wr(x"030", x"00000000");  -- AAD_ADDR (irrelevant)
+            axi_wr(x"034", x"00000000");  -- AAD_LEN = 0
+            axi_wr(x"038", "00" & ADDR_PT4);
+            axi_wr(x"03C", "00" & LEN_PT4);
+            axi_wr(x"040", "00" & ADDR_CT4);
+
+            start_engine('0');
+            wait_done("T11", TIMEOUT_LONG, csr);
+
+            assert csr(11) = '0'
+                report "T11 FAIL: ERROR during 4-block encrypt, CSR = " & to_hstring(csr)
+                severity failure;
+            assert csr(10) = '1'
+                report "T11 FAIL: TAG_VALID not set"
+                severity failure;
+
+            read_tag(rd_tag);
+            enc_tag <= rd_tag;
+            wait for CLK_PERIOD;
+
+            report "  CT[0] = " & to_hstring(sim_mem(11));
+            report "  CT[1] = " & to_hstring(sim_mem(12));
+            report "  CT[2] = " & to_hstring(sim_mem(13));
+            report "  CT[3] = " & to_hstring(sim_mem(14));
+            report "  Tag   = " & to_hstring(enc_tag);
+
+            -- Decrypt round-trip
+            wait for 3 * CLK_PERIOD;
+
+            write_key(KEY);
+            write_iv(IV);
+            axi_wr(x"030", x"00000000");
+            axi_wr(x"034", x"00000000");  -- AAD_LEN = 0
+            axi_wr(x"038", "00" & ADDR_PT4);
+            axi_wr(x"03C", "00" & LEN_PT4);
+            axi_wr(x"040", "00" & ADDR_CT4);
+            axi_wr(x"048", enc_tag(127 downto 96));
+            axi_wr(x"04C", enc_tag( 95 downto 64));
+            axi_wr(x"050", enc_tag( 63 downto 32));
+            axi_wr(x"054", enc_tag( 31 downto  0));
+
+            start_engine('1');
+            wait_done("T11-dec", TIMEOUT_LONG, csr);
+
+            assert csr(11) = '0'
+                report "T11 FAIL: auth_fail on 4-block round-trip"
+                severity failure;
+            assert sim_mem(7)  = PT_BLOCK_0
+                report "T11 FAIL: PT[0] mismatch after decrypt" severity failure;
+            assert sim_mem(8)  = PT_BLOCK_1
+                report "T11 FAIL: PT[1] mismatch after decrypt" severity failure;
+            assert sim_mem(9)  = PT_BLOCK_2
+                report "T11 FAIL: PT[2] mismatch after decrypt" severity failure;
+            assert sim_mem(10) = PT_BLOCK_3
+                report "T11 FAIL: PT[3] mismatch after decrypt" severity failure;
+
+            report "  PASS: T11 4-block burst encrypt/decrypt round-trip";
+
+            -- ── T_DMA_RD_ERR : read SLVERR aborts transfer → csr_error ─
+            -- dma_read_engine sets rd_error on non-OKAY rresp; GCM stalls
+            -- forever (dma_rd_valid never fires); p_status sets csr_error
+            -- via the elsif branch.  wait_done exits on ERROR, not DONE.
+            report "--------------------------------------------------";
+            report "  T_DMA_RD_ERR: DMA read SLVERR -> csr_error";
+            report "--------------------------------------------------";
+
+            wait for 5 * CLK_PERIOD;
+
+            sim_mem(1) := PT_BLOCK_0;
+
+            write_key(KEY);
+            write_iv(IV);
+            axi_wr(x"030", x"00000000");
+            axi_wr(x"034", x"00000000");  -- AAD_LEN = 0
+            axi_wr(x"038", x"00000010");  -- PT_ADDR = 0x10
+            axi_wr(x"03C", x"00000010");  -- PT_LEN  = 16 B
+            axi_wr(x"040", x"00000030");  -- CT_ADDR = 0x30
+
+            dma_inject_rd_error <= '1';
+            start_engine('0');
+            wait_done("T_DMA_RD_ERR", TIMEOUT_SHORT, csr);
+            dma_inject_rd_error <= '0';
+
+            assert csr(11) = '1'
+                report "T_DMA_RD_ERR FAIL: csr_error not set, CSR = " & to_hstring(csr)
+                severity failure;
+            assert csr(9) = '0'
+                report "T_DMA_RD_ERR FAIL: DONE set (should stall on rd error)"
+                severity failure;
+            report "  CSR = " & to_hstring(csr) & "  (expect bit11=ERROR, bit9=0)";
+            -- GCM is stuck; recover with soft reset
+            axi_wr(x"058", x"00000002");
+            wait for 5 * CLK_PERIOD;
+            report "  PASS: T_DMA_RD_ERR read error propagated to csr_error";
+
+            -- ── T_DMA_WR_ERR : write SLVERR after block accepted → csr_error
+            -- block_split accepts the block (wr_block_accepted → dma_wr_done)
+            -- so GCM can complete; write engine then sees SLVERR on B channel
+            -- and asserts wr_error.  p_status sets csr_error via done branch
+            -- (if error fires simultaneously) or via elsif (if after done).
+            -- Verified by reading CSR after a short settle window.
+            report "--------------------------------------------------";
+            report "  T_DMA_WR_ERR: DMA write SLVERR -> csr_error";
+            report "--------------------------------------------------";
+
+            wait for 5 * CLK_PERIOD;
+
+            sim_mem(1) := PT_BLOCK_0;
+
+            write_key(KEY);
+            write_iv(IV);
+            axi_wr(x"030", x"00000000");
+            axi_wr(x"034", x"00000000");  -- AAD_LEN = 0
+            axi_wr(x"038", x"00000010");  -- PT_ADDR = 0x10
+            axi_wr(x"03C", x"00000010");  -- PT_LEN  = 16 B
+            axi_wr(x"040", x"00000030");  -- CT_ADDR = 0x30
+
+            dma_inject_wr_error <= '1';
+            start_engine('0');
+            wait_done("T_DMA_WR_ERR", TIMEOUT_SHORT, csr);
+            dma_inject_wr_error <= '0';
+            -- wait_done exits on DONE or ERROR; write error may fire slightly
+            -- after gcm_done, so give p_status one more poll cycle to latch it
+            wait for 10 * CLK_PERIOD;
+            axi_read(x"058", rdata);
+
+            assert rdata(11) = '1'
+                report "T_DMA_WR_ERR FAIL: csr_error not set, CSR = " & to_hstring(rdata)
+                severity failure;
+            report "  CSR = " & to_hstring(rdata) & "  (expect bit11=ERROR)";
+            axi_wr(x"058", x"00000002");
+            wait for 5 * CLK_PERIOD;
+            report "  PASS: T_DMA_WR_ERR write error propagated to csr_error";
+
         else
             report "--------------------------------------------------";
-            report "  T7-T10 SKIPPED: STEP3_IMPLEMENTED = false";
+            report "  T7-T11 + T_DMA_RD_ERR/WR_ERR SKIPPED: STEP3_IMPLEMENTED = false";
             report "--------------------------------------------------";
         end if;
 

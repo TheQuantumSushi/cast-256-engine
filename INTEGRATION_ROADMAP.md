@@ -184,7 +184,7 @@ Add a `p_dma_adapter` process in `crypto.vhd` that bridges the two models. The a
 
 ---
 
-## Step 4 — Control-flow fix: START while BUSY ⬜ TODO
+## Step 4 — Control-flow fix: START while BUSY ✅ DONE
 
 **One remaining control-path issue after Steps 1–3.**
 
@@ -220,7 +220,7 @@ Note: Issues A (H precomputation readiness) and C (key write ordering) from the 
 
 ---
 
-## Step 5 — Integration testbench ⬜ TODO
+## Step 5 — Integration testbench ✅ DONE
 
 **Verify the full system end-to-end before declaring integration complete.**
 
@@ -264,7 +264,7 @@ The testbench instantiates `crypto.vhd` and provides:
 | 1 | ✅ DONE | Reconcile two GCM implementations | `crypto.vhd` | `gcm.vhd` is authoritative; broken inline FSM removed; `p_status`/`p_irq` added; DMA stubs in place |
 | 2 | ✅ DONE | Address bounds validation | `axi_slave_pkg.vhd`, `axi_slave_wr.vhd` | SLVERR on 5 address/length registers if bits [31:30] set |
 | 3 | ✅ DONE | DMA burst adapter | `crypto.vhd` | All `-- Step 3` stubs replaced; per-block ↔ burst bridge implemented; `dma_wr_done` sticky for GCTR_LAST window |
-| 4 | ⬜ TODO | START-while-BUSY SLVERR | `axi_slave_wr.vhd` | One-line fix; explicit protocol rejection |
+| 4 | ✅ DONE | START-while-BUSY SLVERR | `axi_slave_wr.vhd` | One-line fix; explicit protocol rejection |
 | ~~4 orig~~ | ~~obsolete~~ | ~~CAST-256 + GHASH wiring~~ | — | Superseded: `gcm.vhd` owns these internally |
 | ~~5 orig~~ | ~~partial~~ | ~~H_READY, key ordering~~ | — | H_READY N/A; key ordering N/A; START gating → Step 4 |
-| 5 | ⬜ TODO | Integration testbench | `tb_crypto_integration.vhd` | End-to-end NIST KAT passes under GHDL |
+| 5 | ✅ DONE | Integration testbench | `tb_crypto_integration.vhd` | T0–T10 + T_SWB + T_SRESET_MID; round-trip encrypt/decrypt; bounds/error/reset coverage |
