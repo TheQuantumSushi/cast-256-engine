@@ -1,0 +1,27 @@
+# GHDL build artifacts
+.s_*
+work-obj08.cf
+*.vcd
+
+# GHDL elaborated binaries (no extension, match known testbench names)
+tb_gcm
+tb_cast256
+tb_dma_engine
+tb_axi_slave
+tb_crypto_integration
+
+# Vivado project artefacts
+*.jou
+*.log
+*.str
+*.dcp
+*.bit
+*.ltx
+vivado_*
+.Xil/
+
+# Editor / OS
+*.swp
+*~
+.DS_Store
+Thumbs.db
