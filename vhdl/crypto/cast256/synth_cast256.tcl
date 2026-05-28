@@ -24,19 +24,16 @@ set src_files {
     cast256.vhd
 }
 
-# ── Clock constraint ──────────────────────────────────────────────────────────
-# This is the target clock period in nanoseconds.
-# Vivado will tell you how much slack you have against this target.
-# Positive slack = your design meets timing at this frequency.
-# Negative slack = your design is too slow; Fmax is lower than this.
-# Start with 10 ns (100 MHz) and adjust based on the results.
+# ── Clock constraint (internal — not reported) ────────────────────────────────
+# A reference clock is required for Vivado to compute timing paths and derive
+# Fmax. The period value only affects how WNS is expressed; Fmax is independent
+# of it (Fmax = 1000 / critical_path_ns). The value is not surfaced in output.
 set clk_period_ns 10.0
 
 # ─────────────────────────────────────────────────────────────────────────────
 
 puts "================================================"
 puts " Synthesizing cast256 for part: $part"
-puts " Target clock period          : ${clk_period_ns} ns"
 puts "================================================"
 
 # Read all source files
@@ -73,29 +70,16 @@ report_timing_summary \
 report_utilization \
     -file utilization.rpt
 
-# ── Print Fmax estimate to console ────────────────────────────────────────────
-# WNS = Worst Negative Slack.
-# If WNS >= 0 : design meets timing. Fmax >= 1 / clk_period_ns.
-# If WNS <  0 : design does not meet timing.
-#               Critical path delay = clk_period_ns - WNS (since WNS is negative,
-#               this adds to the period). Fmax = 1 / (clk_period_ns - WNS).
-set wns [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1 -setup]]
+set wns              [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1 -setup]]
 set critical_path_ns [expr {$clk_period_ns - $wns}]
-set fmax_mhz [expr {1000.0 / $critical_path_ns}]
+set fmax_mhz         [expr {1000.0 / $critical_path_ns}]
 
 puts "\n================================================"
 puts " Timing summary"
 puts "================================================"
-puts [format " Target period    : %.2f ns  (%.1f MHz)" \
-    $clk_period_ns [expr {1000.0 / $clk_period_ns}]]
 puts [format " Worst slack      : %.3f ns" $wns]
 puts [format " Critical path    : %.3f ns" $critical_path_ns]
 puts [format " Estimated Fmax   : %.1f MHz" $fmax_mhz]
-if {$wns >= 0} {
-    puts " Status           : MEETS TIMING"
-} else {
-    puts " Status           : DOES NOT MEET TIMING at ${clk_period_ns} ns"
-}
 puts "================================================\n"
 
 puts "Full reports written to:"
