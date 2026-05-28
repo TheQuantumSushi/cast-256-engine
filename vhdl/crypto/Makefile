@@ -53,11 +53,13 @@ GF128    = $(GCM_DIR)/gf128_mul.vhd
 GHASH    = $(GCM_DIR)/ghash.vhd
 GCM_TOP  = $(GCM_DIR)/gcm.vhd
 
-# crypto top + testbench
-CRYPTO   = crypto.vhd
-TB       = tb_crypto_integration.vhd
+# crypto top + testbenches
+CRYPTO      = crypto.vhd
+TB          = tb_crypto_integration.vhd
+TB_BENCH    = tb_crypto_bench.vhd
 
-TB_ENTITY = tb_crypto_integration
+TB_ENTITY       = tb_crypto_integration
+TB_BENCH_ENTITY = tb_crypto_bench
 
 # ── Stamp files ───────────────────────────────────────────────────────────────
 S_CAST_PKG = .s_cast_pkg
@@ -80,6 +82,7 @@ S_GHASH    = .s_ghash
 S_GCM_TOP  = .s_gcm_top
 S_CRYPTO   = .s_crypto
 S_TB       = .s_tb
+S_TB_BENCH = .s_tb_bench
 
 # ─────────────────────────────────────────────────────────────────────────────
 .PHONY: all
@@ -166,8 +169,12 @@ $(S_CRYPTO): $(CRYPTO) $(S_AXI_TOP) $(S_DMA_TOP) $(S_GCM_TOP)
 	$(GHDL) -a $(STD) $<
 	@touch $@
 
-# ── Testbench ─────────────────────────────────────────────────────────────────
+# ── Testbenches ───────────────────────────────────────────────────────────────
 $(S_TB): $(TB) $(S_CRYPTO)
+	$(GHDL) -a $(STD) $<
+	@touch $@
+
+$(S_TB_BENCH): $(TB_BENCH) $(S_CRYPTO)
 	$(GHDL) -a $(STD) $<
 	@touch $@
 
@@ -175,6 +182,10 @@ $(S_TB): $(TB) $(S_CRYPTO)
 .PHONY: elaborate
 elaborate: $(S_TB)
 	$(GHDL) -e $(STD) $(TB_ENTITY)
+
+.PHONY: elaborate-bench
+elaborate-bench: $(S_TB_BENCH)
+	$(GHDL) -e $(STD) $(TB_BENCH_ENTITY)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Run targets
@@ -225,11 +236,39 @@ run-vcd: elaborate
 	@echo "  Waveform → \033[0;36mtb_crypto_integration.vcd\033[0m"
 
 # ─────────────────────────────────────────────────────────────────────────────
+.PHONY: bench
+bench: elaborate-bench
+	@echo "\033[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+	@echo "\033[1m  crypto Benchmark — $(TB_BENCH_ENTITY)  [$(CLK_MHZ) MHz, mem_lat=$(MEM_LAT)]\033[0m"
+	@echo "\033[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+	@$(GHDL) -r $(STD) $(TB_BENCH_ENTITY) \
+		-gCLK_MHZ=$(CLK_MHZ) \
+		-gMEM_LAT=$(MEM_LAT) \
+		--ieee-asserts=disable \
+		--assert-level=failure \
+		2>&1 | awk "$$AWK_FILTER"
+	@echo "\033[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+
+CLK_MHZ ?= 100
+MEM_LAT ?= 4
+
+.PHONY: bench-vcd
+bench-vcd: elaborate-bench
+	@$(GHDL) -r $(STD) $(TB_BENCH_ENTITY) \
+		-gCLK_MHZ=$(CLK_MHZ) \
+		-gMEM_LAT=$(MEM_LAT) \
+		--ieee-asserts=disable \
+		--assert-level=failure \
+		--vcd=tb_crypto_bench.vcd \
+		2>&1 | awk "$$AWK_FILTER"
+	@echo "  Waveform → \033[0;36mtb_crypto_bench.vcd\033[0m"
+
 .PHONY: clean
 clean:
 	rm -f $(S_CAST_PKG) $(S_CAST_KS) $(S_CAST_ENC) $(S_CAST_TOP)
 	rm -f $(S_AXI_PKG) $(S_AXI_WR) $(S_AXI_RD) $(S_AXI_TOP)
 	rm -f $(S_DMA_FIFO) $(S_DMA_JOIN) $(S_DMA_SPLIT) $(S_DMA_RD) $(S_DMA_WR) $(S_DMA_TOP)
 	rm -f $(S_GCM_PKG) $(S_GF128) $(S_GHASH) $(S_GCM_TOP)
-	rm -f $(S_CRYPTO) $(S_TB)
-	rm -f work-obj08.cf $(TB_ENTITY) tb_crypto_integration.vcd
+	rm -f $(S_CRYPTO) $(S_TB) $(S_TB_BENCH)
+	rm -f work-obj08.cf $(TB_ENTITY) $(TB_BENCH_ENTITY)
+	rm -f tb_crypto_integration.vcd tb_crypto_bench.vcd
