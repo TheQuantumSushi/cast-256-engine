@@ -99,6 +99,9 @@ architecture rtl of cast256_ks is
 begin
 
     -- ── Outputs ───────────────────────────────────────────────────────
+    -- done is combinatorial: '1' iff state=ST_DONE and start='0'.
+    -- See cast256_enc for the full rationale.
+    done <= '1' when (state = ST_DONE) and (start = '0') else '0';
     kr_o <= kr_reg;
     km_o <= km_reg;
 
@@ -197,7 +200,6 @@ begin
                 ks_octave   <= 0;
                 f_ctr       <= 0;
                 subkey_ctr  <= 0;
-                done        <= '0';
                 kappa_reg.a <= (others => '0');
                 kappa_reg.b <= (others => '0');
                 kappa_reg.c <= (others => '0');
@@ -217,7 +219,6 @@ begin
 
                     -- ── IDLE ───────────────────────────────────────────
                     when IDLE =>
-                        done <= '0';
                         if start = '1' then
                             kappa_reg.a <= key(255 downto 224);
                             kappa_reg.b <= key(223 downto 192);
@@ -324,7 +325,6 @@ begin
 
                     -- ── ST_DONE ────────────────────────────────────────
                     when ST_DONE =>
-                        done <= '1';
                         if start = '1' then
                             kappa_reg.a <= key(255 downto 224);
                             kappa_reg.b <= key(223 downto 192);
@@ -337,7 +337,6 @@ begin
                             ks_octave   <= 0;
                             f_ctr       <= 0;
                             subkey_ctr  <= 0;
-                            done        <= '0';
                             state       <= ADDR;
                         end if;
 

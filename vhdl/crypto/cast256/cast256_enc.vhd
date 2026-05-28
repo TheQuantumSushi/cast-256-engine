@@ -95,7 +95,8 @@ architecture rtl of cast256_enc is
     -- │           addr_comb simultaneously drives addresses for step+1 │
     -- │           using forwarded beta values (Q rounds) or registered  │
     -- │           beta values (QBAR rounds). State loops to COMPUTE.   │
-    -- │ ST_DONE : assert done; accept back-to-back start               │
+    -- │ ST_DONE : done is '1' via combinatorial concurrent stmt while   │
+    -- │           here and start='0'; accept back-to-back start         │
     -- └─────────────────────────────────────────────────────────────────┘
     type enc_state_t is (IDLE, ADDR, COMPUTE, ST_DONE);
     signal state : enc_state_t;
@@ -138,7 +139,12 @@ architecture rtl of cast256_enc is
 
 begin
 
-    -- ── Output ────────────────────────────────────────────────────────
+    -- ── Outputs ───────────────────────────────────────────────────────
+    -- done is combinatorial: '1' iff state=ST_DONE and start='0'.
+    -- Dropping done immediately when start is asserted (same cycle) lets
+    -- callers skip the 1-cycle ARM hold-off that was required to avoid
+    -- sampling a stale registered '1' on the start pulse cycle.
+    done       <= '1' when (state = ST_DONE) and (start = '0') else '0';
     ciphertext <= beta_reg.a & beta_reg.b & beta_reg.c & beta_reg.d;
 
     -- ╔═════════════════════════════════════════════════════════════════╗
@@ -423,7 +429,6 @@ begin
                 state      <= IDLE;
                 counter    <= 0;
                 f_step     <= 0;
-                done       <= '0';
                 beta_reg.a <= (others => '0');
                 beta_reg.b <= (others => '0');
                 beta_reg.c <= (others => '0');
@@ -433,7 +438,6 @@ begin
 
                     -- ── IDLE ───────────────────────────────────────────
                     when IDLE =>
-                        done <= '0';
                         if start = '1' then
                             beta_reg.a <= plaintext(127 downto 96);
                             beta_reg.b <= plaintext( 95 downto 64);
@@ -528,7 +532,6 @@ begin
 
                     -- ── ST_DONE ────────────────────────────────────────
                     when ST_DONE =>
-                        done <= '1';
                         if start = '1' then
                             beta_reg.a <= plaintext(127 downto 96);
                             beta_reg.b <= plaintext( 95 downto 64);
@@ -536,7 +539,6 @@ begin
                             beta_reg.d <= plaintext( 31 downto  0);
                             counter    <= 0;
                             f_step     <= 0;
-                            done       <= '0';
                             state      <= ADDR;  -- fresh ADDR needed for new block
                         end if;
 
