@@ -113,6 +113,7 @@ begin
         variable strb_v : std_ulogic_vector(3 downto 0);
         variable widx : integer;
         variable wr_decerr_v : std_ulogic;
+        variable wr_slverr_v : std_ulogic;
     begin
         if rising_edge(aclk) then
             -- Default: clear one-cycle pulses
@@ -185,6 +186,7 @@ begin
                         strb_v := wr_strb_lat;
 
                         wr_decerr_v := '0';
+                        wr_slverr_v := '0';
                         widx := to_integer(unsigned(addr_v(4 downto 2)));
 
                         if addr_v(11 downto 5) = "0000000" and
@@ -241,7 +243,10 @@ begin
                             wr_decerr_v := '1';
 
                         elsif addr_v = x"030" then
-                            if csr_busy = '0' then
+                            -- AAD_ADDR: bits [31:30] must be 0 (30-bit DMA address space)
+                            if data_v(31 downto 30) /= "00" then
+                                wr_slverr_v := '1';
+                            elsif csr_busy = '0' then
                                 for i in 0 to 3 loop
                                     if strb_v(i) = '1' then
                                         aad_addr_r(8*(i+1)-1 downto 8*i) <= data_v(8*(i+1)-1 downto 8*i);
@@ -250,7 +255,10 @@ begin
                             end if;
 
                         elsif addr_v = x"034" then
-                            if csr_busy = '0' then
+                            -- AAD_LEN: bits [31:30] must be 0 (max 1 GB)
+                            if data_v(31 downto 30) /= "00" then
+                                wr_slverr_v := '1';
+                            elsif csr_busy = '0' then
                                 for i in 0 to 3 loop
                                     if strb_v(i) = '1' then
                                         aad_len_r(8*(i+1)-1 downto 8*i) <= data_v(8*(i+1)-1 downto 8*i);
@@ -259,7 +267,10 @@ begin
                             end if;
 
                         elsif addr_v = x"038" then
-                            if csr_busy = '0' then
+                            -- PT_ADDR: bits [31:30] must be 0 (30-bit DMA address space)
+                            if data_v(31 downto 30) /= "00" then
+                                wr_slverr_v := '1';
+                            elsif csr_busy = '0' then
                                 for i in 0 to 3 loop
                                     if strb_v(i) = '1' then
                                         pt_addr_r(8*(i+1)-1 downto 8*i) <= data_v(8*(i+1)-1 downto 8*i);
@@ -268,7 +279,10 @@ begin
                             end if;
 
                         elsif addr_v = x"03C" then
-                            if csr_busy = '0' then
+                            -- PT_LEN: bits [31:30] must be 0 (max 1 GB)
+                            if data_v(31 downto 30) /= "00" then
+                                wr_slverr_v := '1';
+                            elsif csr_busy = '0' then
                                 for i in 0 to 3 loop
                                     if strb_v(i) = '1' then
                                         pt_len_r(8*(i+1)-1 downto 8*i) <= data_v(8*(i+1)-1 downto 8*i);
@@ -277,7 +291,10 @@ begin
                             end if;
 
                         elsif addr_v = x"040" then
-                            if csr_busy = '0' then
+                            -- CT_ADDR: bits [31:30] must be 0 (30-bit DMA address space)
+                            if data_v(31 downto 30) /= "00" then
+                                wr_slverr_v := '1';
+                            elsif csr_busy = '0' then
                                 for i in 0 to 3 loop
                                     if strb_v(i) = '1' then
                                         ct_addr_r(8*(i+1)-1 downto 8*i) <= data_v(8*(i+1)-1 downto 8*i);
@@ -352,6 +369,8 @@ begin
 
                         if wr_decerr_v = '1' then
                             bresp_i <= RESP_DECERR;
+                        elsif wr_slverr_v = '1' then
+                            bresp_i <= RESP_SLVERR;
                         else
                             bresp_i <= RESP_OKAY;
                         end if;

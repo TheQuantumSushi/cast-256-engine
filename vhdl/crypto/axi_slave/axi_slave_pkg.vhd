@@ -4,7 +4,8 @@ use ieee.numeric_std.all;
 
 package axi_slave_pkg is
 
-    constant RESP_OKAY : std_ulogic_vector(1 downto 0) := "00";
+    constant RESP_OKAY   : std_ulogic_vector(1 downto 0) := "00";
+    constant RESP_SLVERR : std_ulogic_vector(1 downto 0) := "10";
     constant RESP_DECERR : std_ulogic_vector(1 downto 0) := "11";
 
     type wr_state_t is (WR_IDLE, WR_HAVE_ADDR, WR_HAVE_DATA, WR_BOTH);
