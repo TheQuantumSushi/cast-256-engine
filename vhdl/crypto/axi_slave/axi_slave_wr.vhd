@@ -351,8 +351,12 @@ begin
                                     sreset_r <= '1';
                                     key_word_written <= (others => '0');
                                 end if;
-                                if data_v(0) = '1' and csr_busy = '0' then
-                                    start_r <= '1';
+                                if data_v(0) = '1' then
+                                    if csr_busy = '1' then
+                                        wr_slverr_v := '1';
+                                    else
+                                        start_r <= '1';
+                                    end if;
                                 end if;
                             end if;
                             if strb_v(0) = '1' and csr_busy = '0' then
