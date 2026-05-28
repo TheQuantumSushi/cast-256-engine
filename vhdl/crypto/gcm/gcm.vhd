@@ -186,17 +186,24 @@ begin
                  std_ulogic_vector(resize(pt_len_r,  64) sll 3);
 
     -- ── CAST-256 instance ─────────────────────────────────────────────
+    -- GCM uses channel 0 only; channel 1 is held idle (open / '0').
+    -- A future round-robin dispatcher can exploit channel 1 for higher
+    -- throughput once Step 3 is in place.
     u_cast : entity work.cast256
         port map (
-            aclk          => aclk,
-            aresetn       => aresetn,
-            key           => key_r,
-            key_valid     => bc_key_valid,
-            key_ready     => bc_key_ready,
-            plaintext     => bc_pt,
-            encrypt_start => bc_start,
-            ciphertext    => bc_ct,
-            enc_done      => bc_done
+            aclk            => aclk,
+            aresetn         => aresetn,
+            key             => key_r,
+            key_valid       => bc_key_valid,
+            key_ready       => bc_key_ready,
+            plaintext_0     => bc_pt,
+            encrypt_start_0 => bc_start,
+            ciphertext_0    => bc_ct,
+            enc_done_0      => bc_done,
+            plaintext_1     => (others => '0'),
+            encrypt_start_1 => '0',
+            ciphertext_1    => open,
+            enc_done_1      => open
         );
 
     -- ── GHASH instance ────────────────────────────────────────────────
