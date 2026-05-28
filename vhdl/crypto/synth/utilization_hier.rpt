@@ -1,0 +1,52 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2 (win64) Build 6299465 Fri Nov 14 19:35:11 GMT 2025
+| Date         : Thu May 28 22:43:34 2026
+| Host         : Lenovo_Yogaslim running 64-bit major release  (build 9200)
+| Command      : report_utilization -hierarchical -file synth/utilization_hier.rpt
+| Design       : crypto
+| Device       : xc7z010clg400-1
+| Speed File   : -1
+| Design State : Synthesized
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+Utilization Design Information
+
+Table of Contents
+-----------------
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++------------------------+------------------+------------+------------+---------+------+------+--------+--------+------------+
+|        Instance        |      Module      | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs | RAMB36 | RAMB18 | DSP Blocks |
++------------------------+------------------+------------+------------+---------+------+------+--------+--------+------------+
+| crypto                 |            (top) |      11587 |      11411 |     176 |    0 | 7742 |      0 |      4 |          0 |
+|   (crypto)             |            (top) |          2 |          2 |       0 |    0 |  688 |      0 |      0 |          0 |
+|   u_dma                |       dma_engine |        412 |        236 |     176 |    0 |  668 |      0 |      0 |          0 |
+|     u_read             |  dma_read_engine |        198 |        110 |      88 |    0 |  347 |      0 |      0 |          0 |
+|       (u_read)         |  dma_read_engine |         66 |         66 |       0 |    0 |  115 |      0 |      0 |          0 |
+|       u_join           |       block_join |        132 |         44 |      88 |    0 |  232 |      0 |      0 |          0 |
+|         (u_join)       |       block_join |          6 |          6 |       0 |    0 |  227 |      0 |      0 |          0 |
+|         u_fifo         |           fifo_1 |        126 |         38 |      88 |    0 |    5 |      0 |      0 |          0 |
+|     u_write            | dma_write_engine |        214 |        126 |      88 |    0 |  321 |      0 |      0 |          0 |
+|       (u_write)        | dma_write_engine |         64 |         64 |       0 |    0 |  184 |      0 |      0 |          0 |
+|       u_split          |      block_split |        150 |         62 |      88 |    0 |  137 |      0 |      0 |          0 |
+|         (u_split)      |      block_split |         49 |         49 |       0 |    0 |  132 |      0 |      0 |          0 |
+|         u_fifo         |             fifo |        101 |         13 |      88 |    0 |    5 |      0 |      0 |          0 |
+|   u_gcm                |              gcm |      10783 |      10783 |       0 |    0 | 5646 |      0 |      4 |          0 |
+|     (u_gcm)            |              gcm |        430 |        430 |       0 |    0 | 2281 |      0 |      0 |          0 |
+|     u_cast             |          cast256 |       9573 |       9573 |       0 |    0 | 2583 |      0 |      4 |          0 |
+|       u_ks             |       cast256_ks |       3742 |       3742 |       0 |    0 | 2050 |      0 |      4 |          0 |
+|       gen_enc[0].u_enc |      cast256_enc |       3214 |       3214 |       0 |    0 |  266 |      0 |      0 |          0 |
+|       gen_enc[1].u_enc |    cast256_enc_0 |       2593 |       2593 |       0 |    0 |  267 |      0 |      0 |          0 |
+|     u_ghash            |            ghash |        780 |        780 |       0 |    0 |  782 |      0 |      0 |          0 |
+|       (u_ghash)        |            ghash |        134 |        134 |       0 |    0 |  387 |      0 |      0 |          0 |
+|       u_mul            |        gf128_mul |        646 |        646 |       0 |    0 |  395 |      0 |      0 |          0 |
+|   u_slave              |        axi_slave |        390 |        390 |       0 |    0 |  740 |      0 |      0 |          0 |
+|     u_wr               |     axi_slave_wr |        294 |        294 |       0 |    0 |  692 |      0 |      0 |          0 |
+|     u_rd               |     axi_slave_rd |         94 |         94 |       0 |    0 |   48 |      0 |      0 |          0 |
++------------------------+------------------+------------+------------+---------+------+------+--------+--------+------------+
+
+
