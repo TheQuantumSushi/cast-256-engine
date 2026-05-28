@@ -1,1 +1,14 @@
+# GHDL work library
 work-obj08.cf
+work-obj93.cf
+work-obj00.cf
+
+# Elaborated simulation binary
+tb_gcm
+
+# Waveform dumps
+*.vcd
+*.ghw
+
+# Stamp files used by the Makefile
+.analysed_*
