@@ -132,7 +132,7 @@ begin
                     when RD_ISSUE_AR =>
                         arvalid_i <= '1';
                         araddr_i  <= std_ulogic_vector(rd_addr);
-                        if m_axi_arready = '1' then
+                        if arvalid_i = '1' and m_axi_arready = '1' then
                             arvalid_i <= '0';
                             state     <= RD_WAIT_RDATA;
                         end if;
