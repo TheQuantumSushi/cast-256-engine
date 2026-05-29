@@ -246,15 +246,15 @@ begin
         end function;
 
         -- Consume one block from the DMA output and compare against ref_fifo.
-        procedure consume_and_check(label : string) is
+        procedure consume_and_check(tag_str : string) is
         begin
             wait until rd_block_valid = '1' for TIMEOUT;
             assert rd_block_valid = '1'
-                report label & ": timeout waiting for rd_block_valid" severity failure;
+                report tag_str & ": timeout waiting for rd_block_valid" severity failure;
             if not ref.empty then
                 exp_blk := ref.pop;
                 assert rd_block_data = exp_blk
-                    report label & ": block data mismatch" severity failure;
+                    report tag_str & ": block data mismatch" severity failure;
             end if;
             rd_consumed <= '1';
             wait for CLK_PERIOD;
@@ -440,7 +440,7 @@ begin
 
         inject_bresp_err   <= '1';
         inject_word_target <= 3;
-        wr_base            <= x"00000000";
+        wr_base            <= x"00000300";
         wr_blk_count       <= x"000001";
         wr_block_data      <= (others => '1');
         wr_start           <= '1';
