@@ -1,5 +1,7 @@
 # GHDL build artifacts
 .s_*
+.analysed_*
+common_lib/
 work-obj08.cf
 *.vcd
 
