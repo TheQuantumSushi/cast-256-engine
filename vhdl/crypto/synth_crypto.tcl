@@ -1,6 +1,6 @@
 # synth_crypto.tcl
-# Synthesize the complete crypto top-level (CAST-256-GCM accelerator)
-# for the Zybo Z7-10 (xc7z010clg400-1) and report timing + utilization.
+# Out-of-context synthesis of the crypto fabric (CAST-256-GCM accelerator).
+# Purpose: fast timing and utilization analysis WITHOUT the Zynq PS context.
 #
 # Run from vhdl/crypto/:
 #   vivado -mode batch -source synth_crypto.tcl
@@ -9,6 +9,12 @@
 #   timing_summary.rpt   -- critical path and Fmax
 #   utilization.rpt      -- LUT / FF / DSP / BRAM usage
 #   utilization_hier.rpt -- per-instance breakdown
+#
+# NOTE — Full Zybo board build (bitstream + XSA):
+#   Use create_bd.tcl instead.  OOC synthesis (-mode out_of_context) cannot
+#   drive place/route because it excludes the Zynq PS and DDR/FIXED_IO ports.
+#   Steps: vivado -mode batch -source package_ip.tcl
+#          vivado -mode batch -source create_bd.tcl
 
 # ── Target device ──────────────────────────────────────────────────────────────
 set part "xc7z010clg400-1"
