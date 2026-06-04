@@ -162,24 +162,14 @@ int crypto_set_key(const uint8_t *key, size_t key_len) {
     uint8_t padded[32] = {0};
     memcpy(padded, key, key_len);
 
-    /* Words must be written 0x000 → 0x01C in order.
-     * Writing word 7 (offset 0x01C) triggers H = BC(K, 0) on hardware. */
+    /* Words written 0x000 → 0x01C in order (big-endian, MSW first).
+     * Writing key registers stores the key; the GCM hardware runs the
+     * key schedule and computes H = BC(K, 0) on the next START pulse,
+     * not here.  No BUSY poll needed. */
     for (int i = 0; i < 8; i++) {
         uint32_t w = ((uint32_t)padded[4*i]   << 24) | ((uint32_t)padded[4*i+1] << 16)
                    | ((uint32_t)padded[4*i+2] <<  8) |  (uint32_t)padded[4*i+3];
         reg_write(REG_KEY_BASE + 4u * (unsigned)i, w);
-    }
-
-    /* Poll until H computation completes (hardware asserts BUSY during this). */
-    struct timespec deadline, now;
-    clock_gettime(CLOCK_MONOTONIC, &deadline);
-    deadline.tv_sec += 1;
-    while (reg_read(REG_CSR) & CSR_BUSY) {
-#ifndef CRYPTO_TEST_BUILD
-        nanosleep(&(struct timespec){0, 1000}, NULL);
-#endif
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        if (now.tv_sec > deadline.tv_sec) return -CRYPTO_ERR_TIMEOUT;
     }
     return 0;
 }

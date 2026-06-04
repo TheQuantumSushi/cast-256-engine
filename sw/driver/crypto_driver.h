@@ -36,12 +36,12 @@ void crypto_reset(void);
  * Configuration  (call after crypto_init, before encrypt/decrypt)
  * --------------------------------------------------------------------------*/
 
-/* Load key into hardware key registers.
- * key_len must be 16, 24, or 32 bytes. Shorter keys are zero-padded.
- * Writing word 7 triggers H = BC(K, 0) on hardware; function polls BUSY
- * until H computation completes (1 s timeout).
- * Returns 0, -CRYPTO_ERR_NOT_INIT, -CRYPTO_ERR_INVALID_KEY, -CRYPTO_ERR_BUSY,
- *         or -CRYPTO_ERR_TIMEOUT. */
+/* Load key into hardware key registers (big-endian, MSW first).
+ * key_len must be 16, 24, or 32 bytes; shorter keys are zero-padded to 32.
+ * The key is stored in registers immediately; H = BC(K, 0) is computed
+ * internally on the next START pulse, not on key write.
+ * Returns 0, -CRYPTO_ERR_NOT_INIT, -CRYPTO_ERR_INVALID_KEY, or
+ *         -CRYPTO_ERR_BUSY. */
 int crypto_set_key(const uint8_t *key, size_t key_len);
 
 /* Load a 96-bit IV into hardware IV registers (big-endian, 12 bytes).
@@ -88,7 +88,8 @@ int crypto_get_status(uint32_t *status_out);
  * --------------------------------------------------------------------------*/
 
 /* Translate a virtual address to a physical DDR address via /proc/self/pagemap.
- * The page must already be resident in DDR (call mlock or use MAP_POPULATE).
+ * Calls mlock(vaddr, 1) internally to pin the page before the lookup; no
+ * pre-locking is needed from the caller.  Requires root (CAP_IPC_LOCK).
  * Returns the physical address, or 0 on failure. */
 uint64_t virt_to_phys(void *vaddr);
 
