@@ -495,16 +495,16 @@ begin
                     wr_block_data_s  <= wr_data_r;
                     if wr_block_accepted_s = '1' then
                         gcm_has_wr_r <= '0';
+                        -- dma_wr_done: sticky; armed when block_split accepts the
+                        -- block into its internal FIFO (~2 cycles after dma_wr_req).
+                        -- GCM_GCTR_LAST checks (gh_done AND dma_wr_done_i) in the
+                        -- same cycle: gh_done is a one-cycle pulse at T+33, so
+                        -- dma_wr_done must already be '1' when it fires.  Tying it
+                        -- to wr_done_s (T+45+) would race and permanently deadlock.
+                        -- Cache coherency on the CPU side is ensured by a DSB in the
+                        -- driver after polling DONE, not by delaying done_o here.
+                        dma_wr_done <= '1';
                     end if;
-                end if;
-
-                -- dma_wr_done: sticky; armed when the DMA write engine confirms the
-                -- last AXI write via BRESP (wr_done_s), not when block_split merely
-                -- accepts data into its FIFO.  This ensures done_o is not asserted
-                -- while DDR writes are still in flight, preventing cache-invalidation
-                -- races on the CPU side.
-                if wr_done_s = '1' then
-                    dma_wr_done <= '1';
                 end if;
 
             end if;
