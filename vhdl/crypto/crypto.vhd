@@ -20,52 +20,54 @@ use ieee.numeric_std.all;
 
 entity crypto is
     port (
-        aclk             : in  std_ulogic;
-        aresetn          : in  std_ulogic;
+        -- std_logic used here so Vivado's block-design wrapper binds correctly.
+        -- Internal signals and sub-component ports stay std_ulogic.
+        aclk             : in  std_logic;
+        aresetn          : in  std_logic;
 
         -- AXI4-Lite slave (control plane, from PS M_AXI_GP0)
-        s0_axi_awaddr    : in  std_ulogic_vector(11 downto 0);
-        s0_axi_awvalid   : in  std_ulogic;
-        s0_axi_awready   : out std_ulogic;
-        s0_axi_wdata     : in  std_ulogic_vector(31 downto 0);
-        s0_axi_wstrb     : in  std_ulogic_vector( 3 downto 0);
-        s0_axi_wvalid    : in  std_ulogic;
-        s0_axi_wready    : out std_ulogic;
-        s0_axi_bresp     : out std_ulogic_vector( 1 downto 0);
-        s0_axi_bvalid    : out std_ulogic;
-        s0_axi_bready    : in  std_ulogic;
-        s0_axi_araddr    : in  std_ulogic_vector(11 downto 0);
-        s0_axi_arvalid   : in  std_ulogic;
-        s0_axi_arready   : out std_ulogic;
-        s0_axi_rdata     : out std_ulogic_vector(31 downto 0);
-        s0_axi_rresp     : out std_ulogic_vector( 1 downto 0);
-        s0_axi_rvalid    : out std_ulogic;
-        s0_axi_rready    : in  std_ulogic;
+        s0_axi_awaddr    : in  std_logic_vector(11 downto 0);
+        s0_axi_awvalid   : in  std_logic;
+        s0_axi_awready   : out std_logic;
+        s0_axi_wdata     : in  std_logic_vector(31 downto 0);
+        s0_axi_wstrb     : in  std_logic_vector( 3 downto 0);
+        s0_axi_wvalid    : in  std_logic;
+        s0_axi_wready    : out std_logic;
+        s0_axi_bresp     : out std_logic_vector( 1 downto 0);
+        s0_axi_bvalid    : out std_logic;
+        s0_axi_bready    : in  std_logic;
+        s0_axi_araddr    : in  std_logic_vector(11 downto 0);
+        s0_axi_arvalid   : in  std_logic;
+        s0_axi_arready   : out std_logic;
+        s0_axi_rdata     : out std_logic_vector(31 downto 0);
+        s0_axi_rresp     : out std_logic_vector( 1 downto 0);
+        s0_axi_rvalid    : out std_logic;
+        s0_axi_rready    : in  std_logic;
 
-        -- AXI4-Lite master (DMA, to PS S_AXI_HP0)
-        m0_axi_araddr    : out std_ulogic_vector(29 downto 0);
-        m0_axi_arvalid   : out std_ulogic;
-        m0_axi_arready   : in  std_ulogic;
-        m0_axi_rdata     : in  std_ulogic_vector(31 downto 0);
-        m0_axi_rresp     : in  std_ulogic_vector( 1 downto 0);
-        m0_axi_rvalid    : in  std_ulogic;
-        m0_axi_rready    : out std_ulogic;
-        m0_axi_awaddr    : out std_ulogic_vector(29 downto 0);
-        m0_axi_awvalid   : out std_ulogic;
-        m0_axi_awready   : in  std_ulogic;
-        m0_axi_wdata     : out std_ulogic_vector(31 downto 0);
-        m0_axi_wstrb     : out std_ulogic_vector( 3 downto 0);
-        m0_axi_wvalid    : out std_ulogic;
-        m0_axi_wready    : in  std_ulogic;
-        m0_axi_bresp     : in  std_ulogic_vector( 1 downto 0);
-        m0_axi_bvalid    : in  std_ulogic;
-        m0_axi_bready    : out std_ulogic;
+        -- AXI4-Lite master (DMA, to PS S_AXI_GP0)
+        m0_axi_araddr    : out std_logic_vector(29 downto 0);
+        m0_axi_arvalid   : out std_logic;
+        m0_axi_arready   : in  std_logic;
+        m0_axi_rdata     : in  std_logic_vector(31 downto 0);
+        m0_axi_rresp     : in  std_logic_vector( 1 downto 0);
+        m0_axi_rvalid    : in  std_logic;
+        m0_axi_rready    : out std_logic;
+        m0_axi_awaddr    : out std_logic_vector(29 downto 0);
+        m0_axi_awvalid   : out std_logic;
+        m0_axi_awready   : in  std_logic;
+        m0_axi_wdata     : out std_logic_vector(31 downto 0);
+        m0_axi_wstrb     : out std_logic_vector( 3 downto 0);
+        m0_axi_wvalid    : out std_logic;
+        m0_axi_wready    : in  std_logic;
+        m0_axi_bresp     : in  std_logic_vector( 1 downto 0);
+        m0_axi_bvalid    : in  std_logic;
+        m0_axi_bready    : out std_logic;
 
         -- Debug / IO
-        sw               : in  std_ulogic_vector( 3 downto 0);
-        btn              : in  std_ulogic_vector( 3 downto 0);
-        led              : out std_ulogic_vector( 3 downto 0);
-        irq              : out std_ulogic
+        sw               : in  std_logic_vector( 3 downto 0);
+        btn              : in  std_logic_vector( 3 downto 0);
+        led              : out std_logic_vector( 3 downto 0);
+        irq              : out std_logic
     );
 end entity crypto;
 
