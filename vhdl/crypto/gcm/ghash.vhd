@@ -16,8 +16,8 @@
 -- │ the 96-cycle CAST-256 window, so this constraint is met by      │
 -- │ construction when valid_i is gated by the GCM state machine.   │
 -- │                                                                  │
--- │ Latency : 17 cycles from valid_i to done_o                     │
--- │   (1 cycle to latch into gf128_mul + 16 cycles for mul)        │
+-- │ Latency : 33 cycles from valid_i to done_o                     │
+-- │   (1 cycle to latch into gf128_mul + 32 cycles for mul)        │
 -- │                                                                  │
 -- │ Interface :                                                      │
 -- │   - H       : hash subkey = CAST256(K, 0^128); stable after    │

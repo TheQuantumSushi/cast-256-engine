@@ -14,9 +14,9 @@
 -- │ Pipeline strategy :                                             │
 -- │   In the GCTR loop, CAST-256(CB_i) and the DMA read of P_i are │
 -- │   issued in parallel. GHASH(C_{i-1}) runs concurrently with    │
--- │   CAST-256(CB_i). Since GHASH latency (17 cycles) << CAST-256  │
--- │   latency (50 cycles), GHASH always finishes before the next   │
--- │   ciphertext block is ready. Net throughput: 1 block/~51 cyc.  │
+-- │   CAST-256(CB_i). Since GHASH latency (33 cycles) << CAST-256  │
+-- │   latency (96 cycles), GHASH always finishes before the next   │
+-- │   ciphertext block is ready. Net throughput: 1 block/~96 cyc.  │
 -- │                                                                  │
 -- │ DMA interface :                                                  │
 -- │   Read  : dma_rd_req_o (pulse) + dma_rd_addr_o (byte addr)     │
@@ -511,9 +511,9 @@ begin
                     -- Wait for both:
                     --   (a) GHASH done (single-cycle pulse) → latch S = gh_Y
                     --   (b) channel-1 enc_done (level) → CAST256(K, J0) ready
-                    -- GHASH takes 17 cycles; the cipher takes 50 cycles.
+                    -- GHASH takes 33 cycles; the cipher takes 96 cycles.
                     -- Typically GHASH fires first; len_gh_done_r holds the
-                    -- event until bc_done_1 arrives ~33 cycles later.
+                    -- event until bc_done_1 arrives ~63 cycles later.
                     when GCM_LEN_WAIT =>
                         if gh_done = '1' then
                             len_gh_done_r <= '1';
