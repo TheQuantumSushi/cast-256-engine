@@ -11,15 +11,15 @@
 # ║    clean     : remove GHDL artefacts                                    ║
 # ║                                                                          ║
 # ║  Generics                                                                ║
-# ║    STEP3 = false (default): skips T7/T8 (no DMA bridge yet)            ║
-# ║    STEP3 = true            : enables T7/T8 once Step 3 is complete      ║
-# ║      make run STEP3=true                                                ║
+# ║    STEP3 = true (default) : all tests including DMA payload tests       ║
+# ║    STEP3 = false          : skip T7-T11 / DMA error tests               ║
+# ║      make run STEP3=false                                               ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 GHDL = ghdl
 STD  = --std=08 -frelaxed
 
-STEP3 ?= false
+STEP3 ?= true
 
 # ── Source paths ──────────────────────────────────────────────────────────────
 CAST_DIR = cast256
