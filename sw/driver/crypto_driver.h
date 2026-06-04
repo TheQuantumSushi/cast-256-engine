@@ -83,6 +83,10 @@ int crypto_get_tag(uint8_t *tag_out);
  * Returns 0 or -CRYPTO_ERR_NOT_INIT. */
 int crypto_get_status(uint32_t *status_out);
 
+/* Read the ciphertext byte length written by hardware into REG_CT_LEN after
+ * a completed encrypt operation.  Returns 0 or -CRYPTO_ERR_NOT_INIT. */
+int crypto_get_ct_len(uint32_t *len_out);
+
 /* ---------------------------------------------------------------------------
  * Memory utilities
  * --------------------------------------------------------------------------*/
@@ -126,6 +130,19 @@ int crypto_init_mock(volatile uint32_t *mock_regs);
  * Set to CSR_DONE for success, CSR_DONE|CSR_TAG_VALID for a tag-match,
  * or CSR_ERROR for a bus error.  Default value: CSR_DONE. */
 extern volatile uint32_t mock_hw_response;
+
+/* Captures the exact CSR value the driver wrote before the last wait_done()
+ * poll.  Use in tests to verify encrypt writes exactly CSR_START (MODE=0)
+ * and decrypt writes CSR_MODE | CSR_START (MODE=1). */
+extern volatile uint32_t mock_csr_at_start;
+
+/* Install a hardware-model hook that replaces mock_hw_response.
+ * When set, wait_done() calls hook(g_regs) instead of writing
+ * mock_hw_response.  The hook is expected to simulate hardware
+ * behaviour: run the crypto operation and write the result (CSR_DONE,
+ * CSR_TAG_VALID, tag registers, …) directly into the register array.
+ * Pass NULL to revert to the simple mock_hw_response mechanism. */
+void crypto_set_hw_hook(void (*hook)(volatile uint32_t *regs));
 #endif
 
 #endif /* CRYPTO_DRIVER_H */

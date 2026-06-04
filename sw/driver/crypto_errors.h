@@ -15,5 +15,6 @@
 #define CRYPTO_ERR_AXI          6  /* DMA bus error (BRESP/RRESP ≠ 00)        */
 #define CRYPTO_ERR_TAG_MISMATCH 7  /* decrypt authentication tag mismatch     */
 #define CRYPTO_ERR_NOT_INIT     8  /* crypto_init() not yet called             */
+#define CRYPTO_ERR_INVALID_PARAM 9 /* NULL pointer or other bad argument       */
 
 #endif /* CRYPTO_ERRORS_H */

@@ -33,6 +33,14 @@ static int mem_fd = -1;
 #else
 /* Default mock response: operation succeeds without a tag check. */
 volatile uint32_t mock_hw_response = CSR_DONE;
+/* Snapshot of the CSR value written by the driver just before wait_done(). */
+volatile uint32_t mock_csr_at_start = 0;
+/* Optional hardware-model hook — overrides mock_hw_response when set. */
+static void (*mock_hw_hook)(volatile uint32_t *regs) = NULL;
+
+void crypto_set_hw_hook(void (*hook)(volatile uint32_t *regs)) {
+    mock_hw_hook = hook;
+}
 #endif
 
 /* ---------------------------------------------------------------------------
@@ -47,10 +55,14 @@ volatile uint32_t mock_hw_response = CSR_DONE;
 static int wait_done(void) {
 #ifdef CRYPTO_TEST_BUILD
     uint32_t csr = reg_read(REG_CSR);
+    mock_csr_at_start = csr;  /* snapshot before mock overwrites */
     if (csr & CSR_START) {
-        /* Consume START and inject the configured mock response. */
-        reg_write(REG_CSR, mock_hw_response);
-        csr = mock_hw_response;
+        if (mock_hw_hook) {
+            mock_hw_hook(g_regs);   /* hw model writes result directly to g_regs */
+        } else {
+            reg_write(REG_CSR, mock_hw_response);
+        }
+        csr = reg_read(REG_CSR);    /* re-read: hook or mock may have changed CSR */
     }
     if (csr & CSR_ERROR) return -CRYPTO_ERR_AXI;
     if (csr & CSR_DONE)  return 0;
@@ -155,6 +167,7 @@ int crypto_init_mock(volatile uint32_t *mock_regs) {
 
 int crypto_set_key(const uint8_t *key, size_t key_len) {
     if (!g_regs) return -CRYPTO_ERR_NOT_INIT;
+    if (!key) return -CRYPTO_ERR_INVALID_PARAM;
     if (key_len != 16 && key_len != 24 && key_len != 32)
         return -CRYPTO_ERR_INVALID_KEY;
     if (reg_read(REG_CSR) & CSR_BUSY) return -CRYPTO_ERR_BUSY;
@@ -176,6 +189,7 @@ int crypto_set_key(const uint8_t *key, size_t key_len) {
 
 int crypto_set_iv(const uint8_t *iv) {
     if (!g_regs) return -CRYPTO_ERR_NOT_INIT;
+    if (!iv) return -CRYPTO_ERR_INVALID_PARAM;
     if (reg_read(REG_CSR) & CSR_BUSY) return -CRYPTO_ERR_BUSY;
 
     for (int i = 0; i < 3; i++) {
@@ -210,6 +224,7 @@ int crypto_decrypt(uint32_t aad_phys, size_t aad_len,
                    uint32_t pt_phys,
                    const uint8_t *expected_tag) {
     if (!g_regs) return -CRYPTO_ERR_NOT_INIT;
+    if (!expected_tag) return -CRYPTO_ERR_INVALID_PARAM;
     if (reg_read(REG_CSR) & CSR_BUSY) return -CRYPTO_ERR_BUSY;
 
     /* Tag must be written before START so hardware can compare after processing. */
@@ -234,12 +249,21 @@ int crypto_decrypt(uint32_t aad_phys, size_t aad_len,
 
 int crypto_get_tag(uint8_t *tag_out) {
     if (!g_regs) return -CRYPTO_ERR_NOT_INIT;
+    if (!tag_out) return -CRYPTO_ERR_INVALID_PARAM;
     read_tag(tag_out);
     return 0;
 }
 
 int crypto_get_status(uint32_t *status_out) {
     if (!g_regs) return -CRYPTO_ERR_NOT_INIT;
+    if (!status_out) return -CRYPTO_ERR_INVALID_PARAM;
     *status_out = reg_read(REG_CSR);
+    return 0;
+}
+
+int crypto_get_ct_len(uint32_t *len_out) {
+    if (!g_regs) return -CRYPTO_ERR_NOT_INIT;
+    if (!len_out) return -CRYPTO_ERR_INVALID_PARAM;
+    *len_out = reg_read(REG_CT_LEN);
     return 0;
 }
