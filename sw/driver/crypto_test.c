@@ -1,3 +1,6 @@
+/* Expose MAP_ANONYMOUS and other Linux extensions under -std=c11 */
+#define _GNU_SOURCE
+
 /* crypto_test.c — on-board hardware test suite for the CAST-256-GCM driver.
  *
  * Requires actual hardware (Zybo + programmed bitstream).  Do NOT run on host.
@@ -16,6 +19,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <unistd.h>
 
 /* ---------------------------------------------------------------------------
@@ -163,4 +167,46 @@ int crypto_run_unit_tests(uint32_t pt_phys, uint32_t ct_phys,
 
     fprintf(stderr, "\nALL UNIT TESTS PASSED\n");
     return 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * Entry point
+ * --------------------------------------------------------------------------*/
+
+int main(void) {
+    int r = crypto_init(CRYPTO_BASE_PHYS);
+    if (r) {
+        fprintf(stderr, "crypto_init failed: %d\n", r);
+        return 1;
+    }
+
+    const size_t buf_len = 64;
+    void *pt_buf = mmap(NULL, buf_len, PROT_READ | PROT_WRITE,
+                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    void *ct_buf = mmap(NULL, buf_len, PROT_READ | PROT_WRITE,
+                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (pt_buf == MAP_FAILED || ct_buf == MAP_FAILED) {
+        fprintf(stderr, "mmap failed\n");
+        if (pt_buf != MAP_FAILED) munmap(pt_buf, buf_len);
+        if (ct_buf != MAP_FAILED) munmap(ct_buf, buf_len);
+        crypto_cleanup();
+        return 1;
+    }
+
+    uint32_t pt_phys = (uint32_t)virt_to_phys(pt_buf);
+    uint32_t ct_phys = (uint32_t)virt_to_phys(ct_buf);
+    if (!pt_phys || !ct_phys) {
+        fprintf(stderr, "virt_to_phys failed (run as root?)\n");
+        munmap(pt_buf, buf_len);
+        munmap(ct_buf, buf_len);
+        crypto_cleanup();
+        return 1;
+    }
+
+    r = crypto_run_unit_tests(pt_phys, ct_phys, pt_buf, ct_buf, buf_len);
+
+    munmap(pt_buf, buf_len);
+    munmap(ct_buf, buf_len);
+    crypto_cleanup();
+    return r ? 1 : 0;
 }

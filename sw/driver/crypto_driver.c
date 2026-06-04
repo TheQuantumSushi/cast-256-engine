@@ -8,6 +8,9 @@
  *   gcc -Wall -Wextra -O2 -DCRYPTO_TEST_BUILD -c crypto_driver.c
  */
 
+/* Expose POSIX.1-2008 symbols (clock_gettime, nanosleep, usleep) under -std=c11 */
+#define _POSIX_C_SOURCE 200809L
+
 #include "crypto_driver.h"
 #include "crypto_hw_priv.h"
 
@@ -137,7 +140,7 @@ void crypto_cleanup(void) {
 void crypto_reset(void) {
     if (!g_regs) return;
     reg_write(REG_CSR, CSR_SOFT_RESET);
-    usleep(10); /* 10 µs — well above any reset latency at 100 MHz */
+    nanosleep(&(struct timespec){0, 10000}, NULL); /* 10 µs — well above any reset latency at 100 MHz */
 }
 
 #else /* CRYPTO_TEST_BUILD — host stubs */
