@@ -11,6 +11,7 @@
 
 #include <fcntl.h>
 #include <stdint.h>
+#include <sys/mman.h>
 #include <unistd.h>
 
 /* ---------------------------------------------------------------------------
@@ -19,6 +20,14 @@
 
 uint64_t virt_to_phys(void *vaddr) {
     uint64_t entry = 0;
+
+    /* Pin the containing page so the kernel faults it into physical RAM and
+     * populates /proc/self/pagemap with a valid PFN.  Without this, a freshly
+     * malloc'd or not-yet-accessed page may have no physical frame assigned,
+     * causing pagemap to report present=0 and this function to return 0.
+     * Failure is intentionally ignored: if mlock fails the subsequent
+     * present-bit check (bit 63) still catches the missing entry. */
+    mlock(vaddr, 1);
 
     int fd = open("/proc/self/pagemap", O_RDONLY);
     if (fd < 0) return 0;
