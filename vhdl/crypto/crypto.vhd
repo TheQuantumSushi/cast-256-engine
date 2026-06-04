@@ -1,21 +1,17 @@
 -- ┌──────────────────────────────────────────────────────────────────┐
 -- │ crypto — top-level integration                                   │
 -- │                                                                  │
--- │ Step 1 DONE : gcm entity (gcm.vhd) is the authoritative GCM    │
--- │               implementation. Broken inline FSM and the         │
--- │               non-existent ghash_engine component have been     │
--- │               removed.                                          │
--- │                                                                  │
--- │ Step 2 TODO : validate 32-bit→30-bit address truncation;        │
--- │               expose H_READY via CSR; guard csr_start.          │
--- │ Step 3 TODO : DMA burst adapter — bridge gcm.vhd per-block req  │
--- │               model to dma_engine burst model.                  │
--- │ Step 4 TODO : integration testbench.                            │
--- │                                                                  │
 -- │ Instantiates:                                                    │
--- │   u_slave : axi_slave   (Milestone 3)                           │
--- │   u_dma   : dma_engine  (Milestone 4)   – stubs for Step 3     │
--- │   u_gcm   : gcm         (Milestones 1+2)                        │
+-- │   u_slave : axi_slave  — AXI4-Lite control plane (12-bit addr) │
+-- │   u_dma   : dma_engine — AXI4-Lite DMA master (30-bit, 1 GB)   │
+-- │   u_gcm   : gcm        — GCM+CAST-256 engine                   │
+-- │                                                                  │
+-- │ p_dma_adapter bridges the per-block request model of gcm.vhd   │
+-- │ to the burst model of dma_engine.                               │
+-- │                                                                  │
+-- │ Address width: axi_slave outputs 32-bit; gcm ports are 30-bit.  │
+-- │ Bits [31:30] are truncated at the port map; axi_slave rejects   │
+-- │ writes with those bits set (SLVERR).                            │
 -- └──────────────────────────────────────────────────────────────────┘
 
 library ieee;
@@ -216,9 +212,8 @@ architecture rtl of crypto is
     signal csr_start      : std_ulogic;
     signal csr_soft_reset : std_ulogic;
     signal csr_mode       : std_ulogic;
-    -- key_loaded_pulse: used by old inline FSM for H precomputation.
-    -- gcm.vhd re-runs the key schedule on every start_i; no precomputed H.
-    -- Signal kept connected to avoid undriven-output warning in axi_slave.
+    -- key_loaded_pulse from axi_slave is unused by gcm.vhd (key schedule
+    -- runs on every start_i).  Kept wired to silence undriven-output warnings.
     signal key_loaded     : std_ulogic;
 
     ---------------------------------------------------------------------------
@@ -240,31 +235,33 @@ architecture rtl of crypto is
     signal gcm_auth_fail : std_ulogic;
 
     ---------------------------------------------------------------------------
-    -- GCM ↔ DMA bridge signals
+    -- GCM ↔ DMA adapter signals
     --
-    -- gcm.vhd issues one {req, addr} pulse per 128-bit block and expects
-    -- a {data, valid} response; dma_engine uses a burst model ({start, base,
-    -- count} → streaming {data, valid}/{data, valid, accepted}).
-    --
-    -- Step 3 will replace the stub drivers below with a process that
-    -- translates between the two models.  Until then the DMA engine is idle
-    -- and gcm sees zero-data responses, so no real memory traffic occurs.
+    -- gcm.vhd uses a per-block request model: one {req, addr} pulse per
+    -- 128-bit block, expects one {data, valid} or {done} response.
+    -- dma_engine uses a burst model: {start, base, count} then streaming
+    -- blocks.  p_dma_adapter translates between the two.
     ---------------------------------------------------------------------------
-    signal dma_rd_addr    : std_ulogic_vector(29 downto 0);  -- gcm → adapter
-    signal dma_rd_req     : std_ulogic;                       -- gcm → adapter
-    signal dma_rd_data    : std_ulogic_vector(127 downto 0) := (others => '0');  -- adapter → gcm (stub)
-    signal dma_rd_valid   : std_ulogic := '0';                                   -- adapter → gcm (stub)
+    signal dma_rd_addr    : std_ulogic_vector(29 downto 0);   -- gcm → adapter
+    signal dma_rd_req     : std_ulogic;                        -- gcm → adapter
+    signal dma_rd_data    : std_ulogic_vector(127 downto 0);   -- adapter → gcm
+    signal dma_rd_valid   : std_ulogic;                        -- adapter → gcm
 
-    signal dma_wr_addr    : std_ulogic_vector(29 downto 0);  -- gcm → adapter
-    signal dma_wr_data    : std_ulogic_vector(127 downto 0);  -- gcm → adapter
+    signal dma_wr_addr    : std_ulogic_vector(29 downto 0);   -- gcm → adapter
+    signal dma_wr_data    : std_ulogic_vector(127 downto 0);   -- gcm → adapter
     signal dma_wr_req     : std_ulogic;                        -- gcm → adapter
-    signal dma_wr_done    : std_ulogic := '0';                -- adapter → gcm (stub)
+    signal dma_wr_done    : std_ulogic;                        -- adapter → gcm
 
     ---------------------------------------------------------------------------
-    -- Soft-reset: gcm has no explicit soft-reset port, so csr_soft_reset is
-    -- routed to aresetn_gcm.  A one-cycle low on aresetn resets the FSM.
+    -- Soft-reset: csr_soft_reset (one-cycle pulse from axi_slave) is ANDed
+    -- with aresetn to produce derived resets for gcm and dma_engine.
+    -- "Soft" means software-initiated, not non-disruptive; all FSMs and the
+    -- DMA burst adapter are reset together to prevent stale burst state.
+    -- In-flight AXI transactions are abandoned, which is acceptable for a
+    -- synchronous reset in this teaching context.
     ---------------------------------------------------------------------------
     signal aresetn_gcm    : std_ulogic;
+    signal aresetn_dma    : std_ulogic;
 
     ---------------------------------------------------------------------------
     -- IRQ edge-detection
@@ -274,22 +271,20 @@ architecture rtl of crypto is
     signal prev_error : std_ulogic := '0';
 
     ---------------------------------------------------------------------------
-    -- DMA burst adapter (Step 3)
-    --
-    -- gcm.vhd: per-block request model (one {req,addr} pulse per block,
-    --          expects one {data,valid} or {done} response).
-    -- dma_engine: burst model ({start, base, count} then streaming blocks).
+    -- DMA burst adapter (p_dma_adapter)
     --
     -- Read adapter FSM:
     --   Phase 0 = AAD, Phase 1 = GCTR.
-    --   On first dma_rd_req_o of each phase, start the DMA read burst.
+    --   On the first dma_rd_req of each phase, start the DMA read burst.
     --   For each subsequent pulse, forward the next assembled block.
     --   gcm_wants_rd_r latches "GCM is waiting" so the block can arrive later.
     --
     -- Write adapter:
-    --   On first dma_wr_req_o, issue wr_start with the total block count.
-    --   For every dma_wr_req_o, push data into the split FIFO; assert
-    --   dma_wr_done when the block is accepted (wr_block_accepted='1').
+    --   On the first dma_wr_req, issue wr_start with the total block count.
+    --   For every dma_wr_req, push data into the split FIFO.
+    --   dma_wr_done is a sticky level that fires when wr_done_s fires (all AXI
+    --   writes acknowledged by BRESP), ensuring GCM_GCTR_LAST does not proceed
+    --   until DDR writes are complete.  Cleared on csr_start or reset.
     ---------------------------------------------------------------------------
 
     -- Adapter phase / state registers
@@ -327,6 +322,7 @@ begin
     -- Combinatorial assignments
     ---------------------------------------------------------------------------
     aresetn_gcm <= aresetn and not csr_soft_reset;
+    aresetn_dma <= aresetn and not csr_soft_reset;
     ct_len_out  <= pt_len_reg;                  -- GCM: CT len = PT len
     irq         <= irq_i and not sw(0);         -- sw(0) gates IRQ for polling mode
     led(0)      <= csr_busy;
@@ -407,9 +403,8 @@ begin
             rd_block_consumed_s <= '0';
             wr_block_valid_s    <= '0';
             dma_rd_valid        <= '0';
-            -- dma_wr_done is NOT defaulted here; it is a sticky level signal
-            -- that GCM_GCTR_LAST needs to remain '1' across the ~17-cycle
-            -- GHASH window.  Cleared only on csr_start / reset.
+            -- dma_wr_done is sticky: once armed it stays '1' until the next
+            -- csr_start or reset, so GCM_GCTR_LAST can sample it any cycle.
 
             if aresetn = '0' or csr_soft_reset = '1' then
                 rd_adp_phase_r   <= '0';
@@ -500,10 +495,16 @@ begin
                     wr_block_data_s  <= wr_data_r;
                     if wr_block_accepted_s = '1' then
                         gcm_has_wr_r <= '0';
-                        -- dma_wr_done stays '1' after first acceptance; GCM_GCTR_LAST
-                        -- needs it persistent until gh_done fires (~17 cycles later).
-                        dma_wr_done  <= '1';
                     end if;
+                end if;
+
+                -- dma_wr_done: sticky; armed when the DMA write engine confirms the
+                -- last AXI write via BRESP (wr_done_s), not when block_split merely
+                -- accepts data into its FIFO.  This ensures done_o is not asserted
+                -- while DDR writes are still in flight, preventing cache-invalidation
+                -- races on the CPU side.
+                if wr_done_s = '1' then
+                    dma_wr_done <= '1';
                 end if;
 
             end if;
@@ -557,12 +558,11 @@ begin
 
     ---------------------------------------------------------------------------
     -- DMA engine instantiation
-    -- Step 3: replace '0' / open stubs with burst adapter signals.
     ---------------------------------------------------------------------------
     u_dma : dma_engine
         port map (
             aclk               => aclk,
-            aresetn            => aresetn,
+            aresetn            => aresetn_dma,
             m0_axi_araddr      => m0_axi_araddr,
             m0_axi_arvalid     => m0_axi_arvalid,
             m0_axi_arready     => m0_axi_arready,
@@ -599,14 +599,6 @@ begin
 
     ---------------------------------------------------------------------------
     -- GCM engine instantiation
-    --
-    -- Address width: axi_slave outputs 32-bit addresses; gcm.vhd ports are
-    -- 30-bit (1 GB space).  Bits [31:30] are truncated here.  Step 2 adds
-    -- a bounds check in axi_slave that rejects addresses > 0x3FFF_FFF0.
-    --
-    -- Key schedule: gcm.vhd re-runs the key schedule on every start_i
-    -- (~396 cycles) then computes H = BC(K, 0) (~96 cycles) before the
-    -- first AAD block.  The key_loaded_pulse from axi_slave is not used.
     ---------------------------------------------------------------------------
     u_gcm : gcm
         port map (
