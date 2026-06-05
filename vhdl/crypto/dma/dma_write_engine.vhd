@@ -173,7 +173,7 @@ begin
                 elsif split_m_valid = '1' then
                     pop_and_start;
                 else
-                    state <= WR_IDLE;
+                    state <= WR_WAIT_SPLIT;
                 end if;
             end if;
         end procedure;
