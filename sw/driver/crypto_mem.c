@@ -1,8 +1,11 @@
+/* Expose syscall() and Linux-specific extensions under -std=c11 */
+#define _GNU_SOURCE
+
 /* crypto_mem.c — address translation and cache coherency utilities.
  *
  * These functions are Linux / ARM-specific:
  *   - virt_to_phys  requires /proc/self/pagemap (Linux kernel feature)
- *   - flush/invalidate use __builtin___clear_cache (GCC / Clang on ARM)
+ *   - flush/invalidate use the ARM Linux cacheflush syscall directly
  *
  * Do not link this file for host-side (x86) test builds.
  */
@@ -12,7 +15,18 @@
 #include <fcntl.h>
 #include <stdint.h>
 #include <sys/mman.h>
+#include <sys/syscall.h>
 #include <unistd.h>
+
+/* ARM Linux private syscall number for cache maintenance.
+ * __builtin___clear_cache is documented for icache (JIT use) and its dcache
+ * side-effect is toolchain-dependent — it is a no-op on some arm-linux-gnueabihf
+ * libgcc builds.  Call the kernel directly to guarantee both caches are cleaned
+ * and invalidated (BCACHE = clean+invalidate dcache, then invalidate icache). */
+#ifndef __ARM_NR_cacheflush
+#define __ARM_NR_cacheflush 0x0f0002
+#endif
+#define BCACHE 0   /* kernel interprets 0 as "flush everything" on ARM */
 
 /* ---------------------------------------------------------------------------
  * Address translation
@@ -60,9 +74,9 @@ uint64_t virt_to_phys(void *vaddr) {
  */
 
 void crypto_flush_cache(void *buf, size_t len) {
-    __builtin___clear_cache((char *)buf, (char *)buf + len);
+    syscall(__ARM_NR_cacheflush, (long)buf, (long)((char *)buf + len), BCACHE);
 }
 
 void crypto_invalidate_cache(void *buf, size_t len) {
-    __builtin___clear_cache((char *)buf, (char *)buf + len);
+    syscall(__ARM_NR_cacheflush, (long)buf, (long)((char *)buf + len), BCACHE);
 }
