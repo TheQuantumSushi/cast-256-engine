@@ -117,12 +117,17 @@ begin
         end procedure;
 
         -- Track simultaneous AW and W handshakes; move to BRESP when both done.
+        -- Both VALID and READY must be high simultaneously for a proper AXI handshake.
+        -- Reading awvalid_i/wvalid_i here uses their registered (pre-clock-edge) values:
+        -- on the first cycle of WR_ISSUE_AW_W they are still '0' (held low by WR_IDLE),
+        -- so a slave that keeps AWREADY/WREADY permanently high cannot cause a false ack
+        -- before AWVALID/WVALID have actually been driven high.
         procedure check_aw_w_acks is
             variable aw_done : std_ulogic;
             variable w_done  : std_ulogic;
         begin
-            aw_done  := aw_acked or m_axi_awready;
-            w_done   := w_acked  or m_axi_wready;
+            aw_done  := aw_acked or (awvalid_i and m_axi_awready);
+            w_done   := w_acked  or (wvalid_i  and m_axi_wready);
             aw_acked <= aw_done;
             w_acked  <= w_done;
             if m_axi_awready = '1' then awvalid_i <= '0'; end if;
