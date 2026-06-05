@@ -130,8 +130,12 @@ begin
             w_done   := w_acked  or (wvalid_i  and m_axi_wready);
             aw_acked <= aw_done;
             w_acked  <= w_done;
-            if m_axi_awready = '1' then awvalid_i <= '0'; end if;
-            if m_axi_wready  = '1' then wvalid_i  <= '0'; end if;
+            -- VALID de-assertion is handled by the branches below; the
+            -- standalone "if READY then VALID<=0" guards have been removed
+            -- because they fired on the first WR_ISSUE_AW_W cycle (when
+            -- VALID is still '0' but the slave holds READY high), overriding
+            -- the pending VALID<='1' and preventing the handshake from ever
+            -- starting.
             if aw_done = '1' and w_done = '1' then
                 awvalid_i <= '0';
                 wvalid_i  <= '0';
