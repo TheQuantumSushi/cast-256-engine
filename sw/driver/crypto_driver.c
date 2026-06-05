@@ -77,7 +77,17 @@ static int wait_done(void) {
 
     for (;;) {
         uint32_t csr = reg_read(REG_CSR);
-        if (csr & CSR_DONE)  return 0;
+        if (csr & CSR_DONE) {
+            /* DSB: orders all CPU memory accesses before this point.
+             * Then a short sleep lets the S_AXI_GP0 write buffer drain its
+             * pending DMA writes into the DDR controller before the caller
+             * invalidates its cache and reads the result.  S_AXI_GP0 issues
+             * BVALID (which sets DONE) from its internal buffer, not from the
+             * DDR controller, so the data may still be in transit. */
+            __asm__ volatile("dsb" ::: "memory");
+            nanosleep(&(struct timespec){0, 5000000}, NULL); /* 5 ms — drain S_AXI_GP0 write buffer */
+            return 0;
+        }
         if (csr & CSR_ERROR) return -CRYPTO_ERR_AXI;
         nanosleep(&(struct timespec){0, 10000}, NULL); /* 10 µs */
         clock_gettime(CLOCK_MONOTONIC, &now);
