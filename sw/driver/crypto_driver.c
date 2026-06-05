@@ -235,9 +235,9 @@ int crypto_decrypt(uint32_t aad_phys, size_t aad_len,
 
     reg_write(REG_AAD_ADDR, aad_phys);
     reg_write(REG_AAD_LEN,  (uint32_t)aad_len);
-    reg_write(REG_PT_ADDR,  ct_phys);  /* ciphertext is the "input" for decrypt */
+    reg_write(REG_CT_ADDR,  ct_phys);  /* ciphertext input → GCM reads from ct_addr_i */
     reg_write(REG_PT_LEN,   (uint32_t)ct_len);
-    reg_write(REG_CT_ADDR,  pt_phys);  /* plaintext output address */
+    reg_write(REG_PT_ADDR,  pt_phys);  /* plaintext output → GCM writes to pt_addr_i */
     reg_write(REG_CSR, CSR_MODE | CSR_START);
 
     int ret = wait_done();
