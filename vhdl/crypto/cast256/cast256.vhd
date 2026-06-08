@@ -4,17 +4,17 @@
 -- │ Top-level CAST-256 block cipher.                                 │
 -- │ Integrates 1 key schedule unit and 2 parallel encryption cores.  │
 -- │                                                                  │
--- │ Architecture:                                                     │
--- │   cast256_ks  : 1 instance — BRAM S-boxes, 4 RAMB18 total.      │
--- │   cast256_enc : 2 instances — LUTRAM S-boxes, 0 RAMB18.          │
--- │   Both encryption cores share the subkeys from the KS.          │
+-- │ Architecture:                                                    │
+-- │   cast256_ks  : 1 instance - BRAM S-boxes, 4 RAMB18 total.       │
+-- │   cast256_enc : 2 instances - LUTRAM S-boxes, 0 RAMB18.          │
+-- │   Both encryption cores share the subkeys from the KS.           │
 -- │                                                                  │
 -- │ Resource summary (estimated from synthesis):                     │
--- │   RAMB18 : 4  (KS only)                                         │
--- │   LUTs   : ~5,400 enc + ~6,000 KS = ~11,400 total (~65% of     │
--- │            the xc7z010's 17,600 LUTs — fits with margin)        │
+-- │   RAMB18 : 4  (KS only)                                          │
+-- │   LUTs   : ~5,400 enc + ~6,000 KS = ~11,400 total (~65% of       │
+-- │            the xc7z010's 17,600 LUTs - fits with margin)         │
 -- │                                                                  │
--- │ Usage model:                                                      │
+-- │ Usage model:                                                     │
 -- │   1. Assert key_valid for one cycle with a stable key.           │
 -- │      key_ready goes high when the key schedule is done.          │
 -- │   2. For each of the 2 channels independently:                   │
@@ -23,10 +23,6 @@
 -- │      Both channels share subkeys and may be active               │
 -- │      simultaneously.                                             │
 -- │   3. Read ciphertext_N while enc_done_N is high.                 │
--- │                                                                  │
--- │ GCM integration note:                                            │
--- │   gcm.vhd must be updated to drive the 2 enc channels with a    │
--- │   round-robin dispatcher staggered by ~25 cycles.                │
 -- │                                                                  │
 -- │ Encryption latency per channel : ~50 cycles                      │
 -- │ Steady-state throughput        : 1 block / ~25 cycles            │

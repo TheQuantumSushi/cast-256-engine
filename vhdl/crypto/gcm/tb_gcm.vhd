@@ -1,48 +1,48 @@
 -- ┌──────────────────────────────────────────────────────────────────┐
 -- │ tb_gcm                                                           │
 -- │                                                                  │
--- │ Self-checking testbench for the GCM entity.                     │
+-- │ Self-checking testbench for the GCM entity.                      │
 -- │                                                                  │
--- │ No pre-computed CAST-256-GCM reference vectors exist publicly.  │
+-- │ No pre-computed CAST-256-GCM reference vectors exist publicly.   │
 -- │ Correctness is validated through three tests:                    │
 -- │                                                                  │
--- │   Test 1 — Encryption                                           │
--- │     Key/IV/AAD/PT → GCM → CT and tag captured.                 │
--- │     Checks: done_o fires within timeout; auth_fail_o = 0.       │
+-- │   Test 1 - Encryption                                            │
+-- │     Key/IV/AAD/PT → GCM → CT and tag captured.                   │
+-- │     Checks: done_o fires within timeout; auth_fail_o = 0.        │
 -- │                                                                  │
--- │   Test 2 — Decryption round-trip                                │
--- │     Same key/IV/AAD + captured CT/tag → GCM → plaintext.       │
--- │     Checks: done_o fires; auth_fail_o = 0;                      │
--- │             recovered plaintext = original plaintext.           │
+-- │   Test 2 - Decryption round-trip                                 │
+-- │     Same key/IV/AAD + captured CT/tag → GCM → plaintext.         │
+-- │     Checks: done_o fires; auth_fail_o = 0;                       │
+-- │             recovered plaintext = original plaintext.            │
 -- │                                                                  │
--- │   Test 3 — Authentication failure detection                     │
--- │     1 bit of CT corrupted; original tag presented.              │
--- │     Checks: done_o fires; auth_fail_o = 1.                      │
+-- │   Test 3 - Authentication failure detection                      │
+-- │     1 bit of CT corrupted; original tag presented.               │
+-- │     Checks: done_o fires; auth_fail_o = 1.                       │
 -- │                                                                  │
 -- │ DMA mock :                                                       │
--- │   Read  : responds after RD_LATENCY cycles; one request at a    │
--- │           time (GCM serialises reads in its state machine).     │
--- │   Write : accepts immediately; dma_wr_done_i is latched high    │
--- │           from the cycle after wr_req until the next reset.     │
--- │           This ensures GCM_GCTR_LAST sees wr_done regardless    │
--- │           of when it polls relative to the write event.         │
+-- │   Read  : responds after RD_LATENCY cycles; one request at a     │
+-- │           time (GCM serialises reads in its state machine).      │
+-- │   Write : accepts immediately; dma_wr_done_i is latched high     │
+-- │           from the cycle after wr_req until the next reset.      │
+-- │           This ensures GCM_GCTR_LAST sees wr_done regardless     │
+-- │           of when it polls relative to the write event.          │
 -- │                                                                  │
--- │ Memory layout (sim_mem, indexed by block = byte_addr / 16) :   │
--- │   [0]  0x000 : AAD block                                        │
--- │   [1]  0x010 : PT block 0 / decrypted PT block 0               │
--- │   [2]  0x020 : PT block 1 / decrypted PT block 1               │
--- │   [3]  0x030 : CT block 0 (written by encrypt, read by decrypt) │
--- │   [4]  0x040 : CT block 1                                       │
+-- │ Memory layout (sim_mem, indexed by block = byte_addr / 16) :     │
+-- │   [0]  0x000 : AAD block                                         │
+-- │   [1]  0x010 : PT block 0 / decrypted PT block 0                 │
+-- │   [2]  0x020 : PT block 1 / decrypted PT block 1                 │
+-- │   [3]  0x030 : CT block 0 (written by encrypt, read by decrypt)  │
+-- │   [4]  0x040 : CT block 1                                        │
 -- │                                                                  │
--- │ Expected latency per full encrypt (conservative) :              │
--- │   Key schedule : 384 cycles                                     │
--- │   H = CAST256(K,0) : 96 cycles                                  │
--- │   AAD GHASH (1 blk): ~40 cycles (DMA + 33 GHASH)               │
--- │   GCTR 2 blocks    : ~200 cycles                                │
--- │   Length GHASH     : 34 cycles                                  │
--- │   Tag CAST256      : 96 cycles                                  │
--- │   Total            : ~850 cycles → 8.5 µs at 10 ns/cycle       │
--- │   TIMEOUT set to 50 µs for substantial margin.                  │
+-- │ Expected latency per full encrypt (conservative) :               │
+-- │   Key schedule : 384 cycles                                      │
+-- │   H = CAST256(K,0) : 96 cycles                                   │
+-- │   AAD GHASH (1 blk): ~40 cycles (DMA + 33 GHASH)                 │
+-- │   GCTR 2 blocks    : ~200 cycles                                 │
+-- │   Length GHASH     : 34 cycles                                   │
+-- │   Tag CAST256      : 96 cycles                                   │
+-- │   Total            : ~850 cycles → 8.5 µs at 10 ns/cycle         │
+-- │   TIMEOUT set to 50 µs for substantial margin.                   │
 -- └──────────────────────────────────────────────────────────────────┘
 
 library ieee;
@@ -281,7 +281,7 @@ begin
         report "##################################################";
 
         -- ══════════════════════════════════════════════════════════════
-        -- Test 1 — Encryption
+        -- Test 1 - Encryption
         --   AAD at 0x000 (16 B), PT at 0x010 (32 B), CT → 0x030
         -- ══════════════════════════════════════════════════════════════
         report "--------------------------------------------------";
@@ -315,7 +315,7 @@ begin
         report "  PASS: encryption complete, auth_fail = 0";
 
         -- ══════════════════════════════════════════════════════════════
-        -- Test 2 — Decryption round-trip
+        -- Test 2 - Decryption round-trip
         --   CT at 0x030 (from Test 1), decrypt → PT at 0x010
         --   Verifies: recovered PT = original PT; auth_fail_o = 0
         -- ══════════════════════════════════════════════════════════════
@@ -360,7 +360,7 @@ begin
         report "  PASS: plaintext recovered correctly, auth_fail = 0";
 
         -- ══════════════════════════════════════════════════════════════
-        -- Test 3 — Authentication failure detection
+        -- Test 3 - Authentication failure detection
         --   Flip 1 bit in CT block 0; present the original (correct) tag.
         --   Verifies: done_o fires; auth_fail_o = 1.
         -- ══════════════════════════════════════════════════════════════

@@ -1,32 +1,32 @@
 -- ┌──────────────────────────────────────────────────────────────────┐
 -- │ ghash                                                            │
 -- │                                                                  │
--- │ Sequential GHASH function (NIST SP 800-38D Algorithm 2).        │
+-- │ Sequential GHASH function (NIST SP 800-38D Algorithm 2).         │
 -- │                                                                  │
--- │ Maintains a 128-bit running accumulator Y, updated per block:   │
+-- │ Maintains a 128-bit running accumulator Y, updated per block:    │
 -- │                                                                  │
--- │   Y_0 = 0^128                                                   │
--- │   Y_i = (Y_{i-1} XOR X_i) · H                                  │
+-- │   Y_0 = 0^128                                                    │
+-- │   Y_i = (Y_{i-1} XOR X_i) · H                                    │
 -- │                                                                  │
--- │ The accumulator is reset via clear_i. Blocks are fed via        │
--- │ blk_i / valid_i. A new block must not be presented before       │
--- │ done_o fires for the previous one.                              │
+-- │ The accumulator is reset via clear_i. Blocks are fed via         │
+-- │ blk_i / valid_i. A new block must not be presented before        │
+-- │ done_o fires for the previous one.                               │
 -- │                                                                  │
--- │ In the GCM pipeline, the 33-cycle latency per block fits inside │
--- │ the 96-cycle CAST-256 window, so this constraint is met by      │
--- │ construction when valid_i is gated by the GCM state machine.   │
+-- │ In the GCM pipeline, the 33-cycle latency per block fits inside  │
+-- │ the 96-cycle CAST-256 window, so this constraint is met by       │
+-- │ construction when valid_i is gated by the GCM state machine.     │
 -- │                                                                  │
--- │ Latency : 33 cycles from valid_i to done_o                     │
--- │   (1 cycle to latch into gf128_mul + 32 cycles for mul)        │
+-- │ Latency : 33 cycles from valid_i to done_o                       │
+-- │   (1 cycle to latch into gf128_mul + 32 cycles for mul)          │
 -- │                                                                  │
 -- │ Interface :                                                      │
--- │   - H       : hash subkey = CAST256(K, 0^128); stable after    │
--- │               GCM_H_WAIT, before first valid_i                  │
--- │   - blk_i   : 128-bit block to absorb (Xi)                     │
--- │   - valid_i : single-cycle pulse to start processing blk_i     │
--- │   - clear_i : single-cycle pulse to reset Y to 0^128           │
--- │   - Y_o     : current accumulator value (combinatorial)        │
--- │   - done_o  : single-cycle pulse when Y_o has been updated     │
+-- │   - H       : hash subkey = CAST256(K, 0^128); stable after      │
+-- │               GCM_H_WAIT, before first valid_i                   │
+-- │   - blk_i   : 128-bit block to absorb (Xi)                       │
+-- │   - valid_i : single-cycle pulse to start processing blk_i       │
+-- │   - clear_i : single-cycle pulse to reset Y to 0^128             │
+-- │   - Y_o     : current accumulator value (combinatorial)          │
+-- │   - done_o  : single-cycle pulse when Y_o has been updated       │
 -- └──────────────────────────────────────────────────────────────────┘
 
 library ieee;

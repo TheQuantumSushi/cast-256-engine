@@ -1,5 +1,5 @@
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  Makefile — crypto top-level integration testbench                       ║
+# ║  Makefile - crypto top-level integration testbench                       ║
 # ║                                                                          ║
 # ║  Analyses all components in dependency order, elaborates                ║
 # ║  tb_crypto_integration, and runs the simulation.                        ║
@@ -23,8 +23,8 @@ STEP3 ?= true
 
 # ── Source paths ──────────────────────────────────────────────────────────────
 CAST_DIR = cast256
-AXI_DIR  = axi_slave
-DMA_DIR  = dma
+AXI_DIR  = ../axi_slave
+DMA_DIR  = ../dma
 GCM_DIR  = gcm
 
 # cast256 chain
@@ -55,8 +55,8 @@ GCM_TOP  = $(GCM_DIR)/gcm.vhd
 
 # crypto top + testbenches
 CRYPTO      = crypto.vhd
-TB          = tb_crypto_integration.vhd
-TB_BENCH    = tb_crypto_bench.vhd
+TB          = testbenches/tb_crypto_integration.vhd
+TB_BENCH    = testbenches/tb_crypto_bench.vhd
 
 TB_ENTITY       = tb_crypto_integration
 TB_BENCH_ENTITY = tb_crypto_bench
@@ -212,7 +212,7 @@ export AWK_FILTER
 .PHONY: run
 run: elaborate
 	@echo "\033[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-	@echo "\033[1m  crypto Integration — $(TB_ENTITY)  [STEP3=$(STEP3)]\033[0m"
+	@echo "\033[1m  crypto Integration - $(TB_ENTITY)  [STEP3=$(STEP3)]\033[0m"
 	@echo "\033[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 	@$(GHDL) -r $(STD) $(TB_ENTITY) \
 		-gSTEP3_IMPLEMENTED=$(STEP3) \
@@ -224,7 +224,7 @@ run: elaborate
 .PHONY: run-vcd
 run-vcd: elaborate
 	@echo "\033[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-	@echo "\033[1m  crypto Integration — $(TB_ENTITY)  [VCD → tb_crypto_integration.vcd]\033[0m"
+	@echo "\033[1m  crypto Integration - $(TB_ENTITY)  [VCD → tb_crypto_integration.vcd]\033[0m"
 	@echo "\033[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 	@$(GHDL) -r $(STD) $(TB_ENTITY) \
 		-gSTEP3_IMPLEMENTED=$(STEP3) \
@@ -239,7 +239,7 @@ run-vcd: elaborate
 .PHONY: bench
 bench: elaborate-bench
 	@echo "\033[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-	@echo "\033[1m  crypto Benchmark — $(TB_BENCH_ENTITY)  [$(CLK_MHZ) MHz, mem_lat=$(MEM_LAT)]\033[0m"
+	@echo "\033[1m  crypto Benchmark - $(TB_BENCH_ENTITY)  [$(CLK_MHZ) MHz, mem_lat=$(MEM_LAT)]\033[0m"
 	@echo "\033[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 	@$(GHDL) -r $(STD) $(TB_BENCH_ENTITY) \
 		-gCLK_MHZ=$(CLK_MHZ) \

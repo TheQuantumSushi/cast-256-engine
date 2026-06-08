@@ -1,27 +1,27 @@
 -- ┌──────────────────────────────────────────────────────────────────┐
 -- │ gf128_mul                                                        │
 -- │                                                                  │
--- │ GF(2^128) block multiplier. Computes Z = X · Y over GF(2^128)  │
--- │ using the reduction polynomial from NIST SP 800-38D §6.3:       │
+-- │ GF(2^128) block multiplier. Computes Z = X · Y over GF(2^128)    │
+-- │ using the reduction polynomial from NIST SP 800-38D §6.3:        │
 -- │                                                                  │
--- │   R = 11100001 || 0^120   (x^128 + x^7 + x^2 + x + 1)          │
+-- │   R = 11100001 || 0^120   (x^128 + x^7 + x^2 + x + 1)            │
 -- │                                                                  │
--- │ Algorithm (SP 800-38D Algorithm 1), 8-bit unrolled per cycle:   │
--- │   Iterate over the 128 bits of X (x_0 = MSB, x_127 = LSB).     │
--- │   Each cycle processes 8 consecutive bits of X, applying the    │
--- │   conditional Z accumulation and right-shift of V.              │
+-- │ Algorithm (SP 800-38D Algorithm 1), 8-bit unrolled per cycle:    │
+-- │   Iterate over the 128 bits of X (x_0 = MSB, x_127 = LSB).       │
+-- │   Each cycle processes 8 consecutive bits of X, applying the     │
+-- │   conditional Z accumulation and right-shift of V.               │
 -- │                                                                  │
--- │ Latency : 16 clock cycles (8 bits/cycle × 128 bits = 16 steps) │
--- │           + 1 cycle for the DONE_ST pulse = 17 cycles total.    │
+-- │ Latency : 16 clock cycles (8 bits/cycle × 128 bits = 16 steps)   │
+-- │           + 1 cycle for the DONE_ST pulse = 17 cycles total.     │
 -- │                                                                  │
--- │ This keeps GF multiplication well inside the 50-cycle CAST-256  │
--- │ window, enabling GHASH / GCTR pipeline overlap.                 │
+-- │ This keeps GF multiplication well inside the 50-cycle CAST-256   │
+-- │ window, enabling GHASH / GCTR pipeline overlap.                  │
 -- │                                                                  │
 -- │ Interface :                                                      │
--- │   - X, Y   : 128-bit multiplicands, sampled when start fires    │
--- │   - start  : single-cycle pulse; must not fire while busy       │
--- │   - Z      : 128-bit product; stable from done until next start │
--- │   - done   : single-cycle pulse when Z is valid                 │
+-- │   - X, Y   : 128-bit multiplicands, sampled when start fires     │
+-- │   - start  : single-cycle pulse; must not fire while busy        │
+-- │   - Z      : 128-bit product; stable from done until next start  │
+-- │   - done   : single-cycle pulse when Z is valid                  │
 -- └──────────────────────────────────────────────────────────────────┘
 
 library ieee;

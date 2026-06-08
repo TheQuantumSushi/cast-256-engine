@@ -1,5 +1,5 @@
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  Makefile — CAST-256 VHDL build, simulation and synthesis               ║
+# ║  Makefile - CAST-256 VHDL build, simulation and synthesis               ║
 # ║                                                                          ║
 # ║  Targets                                                                 ║
 # ║    all         : analyse all source files and elaborate the testbench    ║
@@ -54,7 +54,7 @@ all: elaborate
 # Each stamp depends on the source file and on its upstream dependencies.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# cast256_pkg — no VHDL dependencies
+# cast256_pkg - no VHDL dependencies
 .PHONY: pkg
 pkg: $(STAMP_PKG)
 
@@ -62,7 +62,7 @@ $(STAMP_PKG): $(PKG_SRC)
 	$(GHDL) -a $(STD) $<
 	@touch $@
 
-# cast256_ks — depends on the package
+# cast256_ks - depends on the package
 .PHONY: ks
 ks: $(STAMP_KS)
 
@@ -70,7 +70,7 @@ $(STAMP_KS): $(KS_SRC) $(STAMP_PKG)
 	$(GHDL) -a $(STD) $<
 	@touch $@
 
-# cast256_enc — depends on the package
+# cast256_enc - depends on the package
 .PHONY: enc
 enc: $(STAMP_ENC)
 
@@ -78,7 +78,7 @@ $(STAMP_ENC): $(ENC_SRC) $(STAMP_PKG)
 	$(GHDL) -a $(STD) $<
 	@touch $@
 
-# cast256 top-level — depends on ks and enc
+# cast256 top-level - depends on ks and enc
 .PHONY: top
 top: $(STAMP_TOP)
 
@@ -86,7 +86,7 @@ $(STAMP_TOP): $(TOP_SRC) $(STAMP_KS) $(STAMP_ENC)
 	$(GHDL) -a $(STD) $<
 	@touch $@
 
-# testbench — depends on the top-level
+# testbench - depends on the top-level
 .PHONY: tb
 tb: $(STAMP_TB)
 
@@ -128,7 +128,7 @@ PART = xc7z010clg400-1
 #  1. Header part name: grep 'for part:' matched the TCL echo line
 #       # puts " Synthesizing cast256 for part: $part"
 #     before the actual output, so awk '{print $NF}' gave '$part"'.
-#     Fix: use the PART Makefile variable directly in printf — no log parsing.
+#     Fix: use the PART Makefile variable directly in printf - no log parsing.
 #
 #  2. LUT utilisation % showed device count (17600) instead of percentage.
 #     Vivado 2024.2 adds a "Prohibited" column, shifting Util% from field $6
@@ -145,7 +145,7 @@ synth: $(TCL_SCRIPT)
 	@$(VIVADO) -mode batch -source $(TCL_SCRIPT) 2>&1 | tee vivado_synth.log
 	@echo ""
 	@printf "  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-	@printf "  Synthesis Summary — cast256 ($(PART))\n"
+	@printf "  Synthesis Summary - cast256 ($(PART))\n"
 	@printf "  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
 	@awk -F'|' '\
 	/Slice LUTs\*/ { \

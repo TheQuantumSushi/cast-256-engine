@@ -1,12 +1,12 @@
 -- ┌──────────────────────────────────────────────────────────────────┐
 -- │ gcm_pkg                                                          │
 -- │                                                                  │
--- │ Shared constants and utility functions for the GCM pipeline.    │
--- │ Imported by gf128_mul, ghash, and gcm.                          │
+-- │ Shared constants and utility functions for the GCM pipeline.     │
+-- │ Imported by gf128_mul, ghash, and gcm.                           │
 -- │                                                                  │
 -- │ Contents :                                                       │
--- │   GF_R   — 128-bit GF(2^128) reduction polynomial               │
--- │   inc32  — increment the rightmost 32 bits of a 128-bit block   │
+-- │   GF_R   - 128-bit GF(2^128) reduction polynomial                │
+-- │   inc32  - increment the rightmost 32 bits of a 128-bit block    │
 -- └──────────────────────────────────────────────────────────────────┘
 
 library ieee;

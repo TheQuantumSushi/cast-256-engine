@@ -416,7 +416,7 @@ package body cast256_pkg is
     end function;
 
     -- ┌──────────────────────────────────────────────────────────────────┐
-    -- │ f1  —  Round function Type 1 (RFC 2612 Section 2.1)              │
+    -- │ f1  -  Round function Type 1 (RFC 2612 Section 2.1)              │
     -- │                                                                  │
     -- │   I = ((Km + D) <<< Kr)                                          │
     -- │   O = ((S1[Ia] ^ S2[Ib]) - S3[Ic]) + S4[Id]                      │
@@ -447,7 +447,7 @@ package body cast256_pkg is
     end function;
 
     -- ┌──────────────────────────────────────────────────────────────────┐
-    -- │ f2  —  Round function Type 2 (RFC 2612 Section 2.1)              │
+    -- │ f2  -  Round function Type 2 (RFC 2612 Section 2.1)              │
     -- │                                                                  │
     -- │   I = ((Km ^ D) <<< Kr)                                          │
     -- │   O = ((S1[Ia] - S2[Ib]) + S3[Ic]) ^ S4[Id]                      │
@@ -478,7 +478,7 @@ package body cast256_pkg is
     end function;
 
     -- ┌──────────────────────────────────────────────────────────────────┐
-    -- │ f3  —  Round function Type 3 (RFC 2612 Section 2.1)              │
+    -- │ f3  -  Round function Type 3 (RFC 2612 Section 2.1)              │
     -- │                                                                  │
     -- │   I = ((Km - D) <<< Kr)                                          │
     -- │   O = ((S1[Ia] + S2[Ib]) ^ S3[Ic]) - S4[Id]                      │
@@ -539,7 +539,7 @@ package body cast256_pkg is
     end function;
 
     -- ┌──────────────────────────────────────────────────────────────────┐
-    -- │ q_round  —  Forward quad-round Q(i)                              │
+    -- │ q_round  -  Forward quad-round Q(i)                              │
     -- │                                                                  │
     -- │   C = C ^ f1(D, Kr0(i), Km0(i))                                  │
     -- │   B = B ^ f2(C, Kr1(i), Km1(i))                                  │
@@ -568,7 +568,7 @@ package body cast256_pkg is
     end function;
 
     -- ┌──────────────────────────────────────────────────────────────────┐
-    -- │ qbar_round  —  Reverse quad-round QBAR(i)                        │
+    -- │ qbar_round  -  Reverse quad-round QBAR(i)                        │
     -- │                                                                  │
     -- │   D = D ^ f1(A, Kr3(i), Km3(i))                                  │
     -- │   A = A ^ f3(B, Kr2(i), Km2(i))                                  │

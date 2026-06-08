@@ -1,17 +1,17 @@
 -- ┌──────────────────────────────────────────────────────────────────┐
--- │ crypto — top-level integration                                   │
+-- │ crypto - top-level integration                                   │
 -- │                                                                  │
 -- │ Instantiates:                                                    │
--- │   u_slave : axi_slave  — AXI4-Lite control plane (12-bit addr) │
--- │   u_dma   : dma_engine — AXI4-Lite DMA master (30-bit, 1 GB)   │
--- │   u_gcm   : gcm        — GCM+CAST-256 engine                   │
+-- │   u_slave : axi_slave  - AXI4-Lite control plane (12-bit addr)   │
+-- │   u_dma   : dma_engine - AXI4-Lite DMA master (30-bit, 1 GB)     │
+-- │   u_gcm   : gcm        - GCM+CAST-256 engine                     │
 -- │                                                                  │
--- │ p_dma_adapter bridges the per-block request model of gcm.vhd   │
--- │ to the burst model of dma_engine.                               │
+-- │ p_dma_adapter bridges the per-block request model of gcm.vhd     │
+-- │ to the burst model of dma_engine.                                │
 -- │                                                                  │
--- │ Address width: axi_slave outputs 32-bit; gcm ports are 30-bit.  │
--- │ Bits [31:30] are truncated at the port map; axi_slave rejects   │
--- │ writes with those bits set (SLVERR).                            │
+-- │ Address width: axi_slave outputs 32-bit; gcm ports are 30-bit.   │
+-- │ Bits [31:30] are truncated at the port map; axi_slave rejects    │
+-- │ writes with those bits set (SLVERR).                             │
 -- └──────────────────────────────────────────────────────────────────┘
 
 library ieee;
@@ -97,12 +97,12 @@ architecture rtl of crypto is
             tag_o          : out std_ulogic_vector(127 downto 0); -- computed tag
             done_o         : out std_ulogic;                      -- single-cycle done pulse
             auth_fail_o    : out std_ulogic;                      -- tag mismatch (decrypt)
-            -- DMA read interface (per-block request model — Step 3 bridges to dma_engine)
+            -- DMA read interface (per-block request model - Step 3 bridges to dma_engine)
             dma_rd_addr_o  : out std_ulogic_vector( 29 downto 0);
             dma_rd_req_o   : out std_ulogic;
             dma_rd_data_i  : in  std_ulogic_vector(127 downto 0);
             dma_rd_valid_i : in  std_ulogic;
-            -- DMA write interface (per-block request model — Step 3 bridges to dma_engine)
+            -- DMA write interface (per-block request model - Step 3 bridges to dma_engine)
             dma_wr_addr_o  : out std_ulogic_vector( 29 downto 0);
             dma_wr_data_o  : out std_ulogic_vector(127 downto 0);
             dma_wr_req_o   : out std_ulogic;
@@ -112,7 +112,7 @@ architecture rtl of crypto is
 
     ---------------------------------------------------------------------------
     -- Component: axi_slave (Milestone 3)
-    -- Entity defined in vhdl/crypto/axi_slave/axi_slave.vhd.
+    -- Entity defined in vhdl/axi_slave/axi_slave.vhd.
     ---------------------------------------------------------------------------
     component axi_slave is
         port (
@@ -159,7 +159,7 @@ architecture rtl of crypto is
 
     ---------------------------------------------------------------------------
     -- Component: dma_engine (Milestone 4)
-    -- Entity defined in vhdl/crypto/dma/dma_engine.vhd.
+    -- Entity defined in vhdl/dma/dma_engine.vhd.
     ---------------------------------------------------------------------------
     component dma_engine is
         port (

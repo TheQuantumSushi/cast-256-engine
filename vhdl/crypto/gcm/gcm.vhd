@@ -1,47 +1,47 @@
 -- ┌──────────────────────────────────────────────────────────────────┐
 -- │ gcm                                                              │
 -- │                                                                  │
--- │ GCM authenticated encryption / decryption engine.               │
--- │ Implements NIST SP 800-38D Algorithms 4 (AE) and 5 (AD)        │
--- │ using CAST-256 as the underlying block cipher.                  │
+-- │ GCM authenticated encryption / decryption engine.                │
+-- │ Implements NIST SP 800-38D Algorithms 4 (AE) and 5 (AD)          │
+-- │ using CAST-256 as the underlying block cipher.                   │
 -- │                                                                  │
 -- │ Project constraints :                                            │
--- │   - IV  : exactly 96 bits                                       │
--- │   - AAD : 0..1 GB, multiples of 128 bits (u = v = 0)           │
--- │   - PT  : 0..1 GB, multiples of 128 bits                       │
--- │   - Tag : 128 bits                                              │
+-- │   - IV  : exactly 96 bits                                        │
+-- │   - AAD : 0..1 GB, multiples of 128 bits (u = v = 0)             │
+-- │   - PT  : 0..1 GB, multiples of 128 bits                         │
+-- │   - Tag : 128 bits                                               │
 -- │                                                                  │
--- │ Pipeline strategy :                                             │
--- │   In the GCTR loop, CAST-256(CB_i) and the DMA read of P_i are │
--- │   issued in parallel. GHASH(C_{i-1}) runs concurrently with    │
--- │   CAST-256(CB_i). Since GHASH latency (33 cycles) << CAST-256  │
--- │   latency (96 cycles), GHASH always finishes before the next   │
--- │   ciphertext block is ready. Net throughput: 1 block/~96 cyc.  │
+-- │ Pipeline strategy :                                              │
+-- │   In the GCTR loop, CAST-256(CB_i) and the DMA read of P_i are   │
+-- │   issued in parallel. GHASH(C_{i-1}) runs concurrently with      │
+-- │   CAST-256(CB_i). Since GHASH latency (33 cycles) << CAST-256    │
+-- │   latency (96 cycles), GHASH always finishes before the next     │
+-- │   ciphertext block is ready. Net throughput: 1 block/~96 cyc.    │
 -- │                                                                  │
 -- │ DMA interface :                                                  │
--- │   Read  : dma_rd_req_o (pulse) + dma_rd_addr_o (byte addr)     │
--- │           → dma_rd_data_i / dma_rd_valid_i (response)          │
--- │   Write : dma_wr_req_o (pulse) + dma_wr_addr_o + dma_wr_data_o │
--- │           → dma_wr_done_i (acknowledgement, not waited on in   │
--- │              the GCTR loop — only in GCTR_LAST for the final   │
--- │              block, to ensure the last write completes before   │
+-- │   Read  : dma_rd_req_o (pulse) + dma_rd_addr_o (byte addr)       │
+-- │           → dma_rd_data_i / dma_rd_valid_i (response)            │
+-- │   Write : dma_wr_req_o (pulse) + dma_wr_addr_o + dma_wr_data_o   │
+-- │           → dma_wr_done_i (acknowledgement, not waited on in     │
+-- │              the GCTR loop - only in GCTR_LAST for the final     │
+-- │              block, to ensure the last write completes before    │
 -- │              done_o is asserted)                                 │
 -- │                                                                  │
--- │ State sequence (encryption) :                                   │
--- │   Key miss:                                                     │
--- │     IDLE → KS_START → KS_WAIT → H_START → H_WAIT →            │
--- │   Key hit (same key as previous call):                          │
--- │     IDLE →                                                      │
--- │   AAD_CHECK → [AAD_REQ → AAD_WAIT → AAD_HASH] ×n →            │
--- │   GCTR_INIT → PT_CHECK →                                       │
--- │   [GCTR_ENC → GCTR_WAIT] ×(n-1) → GCTR_WAIT → GCTR_LAST →   │
--- │   LEN_HASH (also starts ch1 CAST256(J0)) →                     │
--- │   LEN_WAIT (waits for GHASH + ch1 done) → TAG_OUT → DONE       │
+-- │ State sequence (encryption) :                                    │
+-- │   Key miss:                                                      │
+-- │     IDLE → KS_START → KS_WAIT → H_START → H_WAIT →               │
+-- │   Key hit (same key as previous call):                           │
+-- │     IDLE →                                                       │
+-- │   AAD_CHECK → [AAD_REQ → AAD_WAIT → AAD_HASH] ×n →               │
+-- │   GCTR_INIT → PT_CHECK →                                         │
+-- │   [GCTR_ENC → GCTR_WAIT] ×(n-1) → GCTR_WAIT → GCTR_LAST →        │
+-- │   LEN_HASH (also starts ch1 CAST256(J0)) →                       │
+-- │   LEN_WAIT (waits for GHASH + ch1 done) → TAG_OUT → DONE         │
 -- │                                                                  │
--- │ Decryption is identical except src/dst addresses are swapped   │
--- │ and GHASH is fed the ciphertext (read data) rather than the    │
--- │ XOR result. The tag is verified in TAG_OUT; auth_fail_o is     │
--- │ asserted if the computed tag does not match tag_i.             │
+-- │ Decryption is identical except src/dst addresses are swapped     │
+-- │ and GHASH is fed the ciphertext (read data) rather than the      │
+-- │ XOR result. The tag is verified in TAG_OUT; auth_fail_o is       │
+-- │ asserted if the computed tag does not match tag_i.               │
 -- └──────────────────────────────────────────────────────────────────┘
 
 library ieee;

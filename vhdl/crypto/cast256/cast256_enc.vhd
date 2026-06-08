@@ -10,7 +10,7 @@
 -- │  1. Pipelined BRAM address (ADDR state eliminated from loop)     │
 -- │     During COMPUTE for step N, addr_comb simultaneously drives   │
 -- │     BRAM addresses for step N+1 using forwarded beta values      │
--- │     where needed (Q rounds only — see forwarding analysis).      │
+-- │     where needed (Q rounds only - see forwarding analysis).      │
 -- │     The ADDR state is only entered once per encryption run, for  │
 -- │     the very first step. All subsequent steps run COMPUTE →      │
 -- │     COMPUTE, halving the per-block latency.                      │
@@ -27,14 +27,14 @@
 -- │ Forwarding analysis (Q vs QBAR):                                 │
 -- │   Q (counter 0–5): each step reads the word updated by the       │
 -- │   previous step. Forwarding (beta XOR f_result) is needed at     │
--- │   every step transition except the Q→QBAR boundary              │
--- │   (counter=5, f_step=3 → A is already registered from step 2).  │
--- │   QBAR (counter 6–11): dependencies are 2+ cycles apart;        │
+-- │   every step transition except the Q→QBAR boundary               │
+-- │   (counter=5, f_step=3 → A is already registered from step 2).   │
+-- │   QBAR (counter 6–11): dependencies are 2+ cycles apart;         │
 -- │   all words are correctly registered before they are read.       │
 -- │   No forwarding needed.                                          │
 -- │                                                                  │
 -- │ Latency: ~50 clock cycles per 128-bit block                      │
--- │   (1 ADDR + 48 COMPUTE + 1 ST_DONE, vs 97 in the BRAM baseline) │
+-- │   (1 ADDR + 48 COMPUTE + 1 ST_DONE, vs 97 in the BRAM baseline)  │
 -- └──────────────────────────────────────────────────────────────────┘
 
 library ieee;
@@ -524,10 +524,10 @@ begin
                         elsif f_step = 3 then
                             f_step  <= 0;
                             counter <= counter + 1;
-                            state   <= COMPUTE;   -- ← was ADDR in baseline
+                            state   <= COMPUTE;
                         else
                             f_step <= f_step + 1;
-                            state  <= COMPUTE;    -- ← was ADDR in baseline
+                            state  <= COMPUTE;
                         end if;
 
                     -- ── ST_DONE ────────────────────────────────────────

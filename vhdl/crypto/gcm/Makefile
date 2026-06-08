@@ -1,5 +1,5 @@
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║  Makefile — GCM VHDL build and simulation                                ║
+# ║  Makefile - GCM VHDL build and simulation                                ║
 # ║                                                                          ║
 # ║  Targets                                                                 ║
 # ║    all       : analyse all sources and elaborate the testbench           ║
@@ -122,11 +122,11 @@ elaborate: $(STAMP_TB)
 	$(GHDL) -e $(STD) $(TB_ENTITY)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Run simulation — formatted output, no VCD
+# Run simulation - formatted output, no VCD
 #
 # The awk script does two things:
 #   1. For report note lines: strips the GHDL "file:line:col:@time:(report note):"
-#      prefix so only the message text is printed — much cleaner to read.
+#      prefix so only the message text is printed - much cleaner to read.
 #   2. Colour-codes PASS (green), FAIL/ERROR (red), WARN (yellow),
 #      section separators and headers (cyan).
 #
@@ -158,7 +158,7 @@ export AWK_FILTER
 .PHONY: run
 run: elaborate
 	@echo "\033[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-	@echo "\033[1m  GCM Simulation — $(TB_ENTITY)\033[0m"
+	@echo "\033[1m  GCM Simulation - $(TB_ENTITY)\033[0m"
 	@echo "\033[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 	@$(GHDL) -r $(STD) $(TB_ENTITY) \
 		--ieee-asserts=disable \
@@ -210,7 +210,7 @@ BEGIN {
                "Phase", "abs ns", "abs cycles", "delta"
         printf "  ╠═══════════════╬══════════════╬══════════════╬════════╣\n"
         printf "  ║ %-13s ║ %12d ║ %12d ║ %6s ║\n", \
-               phase, t_ns, cyc, "—"
+               phase, t_ns, cyc, "-"
     } else {
         delta = int((t_ns - prev) / CLK)
         printf "  ║ %-13s ║ %12d ║ %12d ║ %6d ║\n", \
@@ -231,7 +231,7 @@ export AWK_TIMING
 .PHONY: run-time
 run-time: elaborate
 	@echo "\033[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-	@echo "\033[1m  GCM Cycle Timing — $(TB_ENTITY)\033[0m"
+	@echo "\033[1m  GCM Cycle Timing - $(TB_ENTITY)\033[0m"
 	@echo "\033[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 	@$(GHDL) -r $(STD) $(TB_ENTITY) \
 		--ieee-asserts=disable \
@@ -244,7 +244,7 @@ run-time: elaborate
 .PHONY: run-vcd
 run-vcd: elaborate
 	@echo "\033[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-	@echo "\033[1m  GCM Simulation — $(TB_ENTITY)  [VCD → tb_gcm.vcd]\033[0m"
+	@echo "\033[1m  GCM Simulation - $(TB_ENTITY)  [VCD → tb_gcm.vcd]\033[0m"
 	@echo "\033[1m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
 	@$(GHDL) -r $(STD) $(TB_ENTITY) \
 		--ieee-asserts=disable \

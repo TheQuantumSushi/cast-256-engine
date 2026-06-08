@@ -31,8 +31,8 @@ use ieee.numeric_std.all;
 
 -- ┌──────────────────────────────────────────────────────────────────────────┐
 -- │ Generics                                                                 │
--- │   KEY_HEX [string] : 256-bit key as 64 lowercase hex chars      │
--- │   PT_HEX  [string] : 128-bit plaintext as 32 lowercase hex      │
+-- │   KEY_HEX [string] : 256-bit key as 64 lowercase hex chars               │
+-- │   PT_HEX  [string] : 128-bit plaintext as 32 lowercase hex               │
 -- │                                                                          │
 -- │ Defaults are the RFC 2612 Appendix A 256-bit test vector.                │
 -- │ Expected ciphertext : 4f6a2038286897b9c9870136553317fa                   │
@@ -195,7 +195,7 @@ begin
         -- 5. Wait for enc_done
         wait until rising_edge(aclk) and enc_done = '1';
 
-        -- 6. Print result — CIPHERTEXT line is parsed by run_kat.sh
+        -- 6. Print result - CIPHERTEXT line is parsed by run_kat.sh
         report "CIPHERTEXT:" & slv128_to_hex(ciphertext);
 
         -- 7. Stop simulation

@@ -1,0 +1,174 @@
+HANDOVER NOTES - CAST-256/GCM ACCELERATOR
+Session date: 2026-06-08
+=========================================
+
+
+BASELINE STATE (commit b43ea7a)
+--------------------------------
+Everything below was working and timing-clean when this session started:
+
+  - cast256_enc: BRAM S-boxes (ram_style="block"), synchronous read process,
+    4 RAMB18 per instance. DSP48 mapping on f1/f2/f3 (use_dsp="yes" on
+    concurrent signal assignments). ADDR→COMPUTE pipeline: each of the 48
+    f-function steps takes 2 cycles (1 ADDR + 1 COMPUTE) = ~98 cycles/block.
+    Timing met at 100 MHz.
+
+  - gf128_mul: 16-bit unroll per cycle, 9 cycles per GF multiplication,
+    10 cycles per GHASH block.
+
+  - gcm.vhd: single CAST channel, J0 precomputed on channel 1 during
+    GCTR_INIT to hide tag latency (~50 cycles saved at end of operation).
+
+  - Full design: synthesised, placed, routed, bitstream on hardware,
+    functionally correct.
+
+  Baseline throughput: ~98 cycles/block at 100 MHz.
+
+
+WHAT WAS ATTEMPTED THIS SESSION AND THE OUTCOME OF EACH CHANGE
+---------------------------------------------------------------
+
+1. COMPUTE→COMPUTE FORWARDING IN cast256_enc  [BROKE TIMING - MUST REVERT]
+
+   What it is:
+     Instead of spending 1 ADDR cycle per step to drive BRAM addresses from
+     registered beta_reg, the COMPUTE state simultaneously applies the
+     f-function AND drives BRAM addresses for the NEXT step using a forwarded
+     value: d_v = beta_reg.x XOR f_result_comb. This eliminates the ADDR
+     cycle between consecutive steps, halving CAST-256 latency from ~98 to
+     ~50 cycles/block.
+
+   Why it breaks timing:
+     The combinatorial path within one COMPUTE cycle is:
+       BRAM_out → DSP(f_result) → XOR(d_v) → CARRY4(km ± d_v) → BRAM addr setup
+     Logic alone is ~8 ns. Routing on the congested xc7z010 (>80% LUT
+     utilisation with 3 channels) adds 5–7 ns, pushing the total to 19.4 ns
+     post-place-and-route. Fmax = 51.5 MHz. Timing violated by 9.4 ns.
+
+   Why it cannot be fixed without adding a full extra cycle:
+     The BRAM has 1-cycle registered read latency. For the output of step N+1
+     to be available in cycle N+1, the BRAM address for step N+1 must be
+     driven combinatorially WITHIN cycle N. That combinatorial path
+     (DSP → XOR → CARRY4 → BRAM addr) is the one that is too long.
+     Registering any intermediate value (e.g. f_result_comb or d_v) and
+     using it in the next cycle to compute the address means the BRAM output
+     for step N+1 is only available in cycle N+2 - i.e. 2 cycles per step,
+     same latency as ADDR→COMPUTE. There is no way to get 1 cycle per step
+     AND break the timing path on this device at this congestion level.
+
+   What to do:
+     Revert cast256_enc.vhd to ADDR→COMPUTE. Two specific changes:
+
+     a) addr_comb process:
+        Remove the entire "elsif state = COMPUTE then ... end if" block.
+        Keep only the "if state = ADDR then ..." block unchanged.
+        Remove f_result_comb from the sensitivity list of addr_comb.
+
+     b) main_fsm COMPUTE state:
+        Change both "state <= COMPUTE" (the two non-terminal step
+        transitions at the bottom of the COMPUTE case) back to
+        "state <= ADDR". The terminal transition
+        (counter=11 and f_step=3 → ST_DONE) stays as-is.
+
+     c) Update the header comment: latency ~98 cycles/block, remove
+        the COMPUTE→COMPUTE forwarding description.
+
+     The addr_comb ADDR branch, the bram_read process, the f_result_comb
+     concurrent assignments, f_result_comb_proc, and everything else in
+     cast256_enc stay exactly as they are.
+
+
+2. DUAL-CHANNEL GCTR PIPELINING IN gcm.vhd  [WORKING - KEEP]
+
+   When j0_ready_r='1' and pt_blk_rem_r > 1, GCTR_ENC launches channel 1
+   on CB_n+1 in parallel with channel 0 on CB_n (pair_mode_r='1').
+   New states GCM_GCTR_WAIT2 and GCM_GCTR_LAST2 process the second block.
+   Logically correct. No timing issues from this change alone.
+
+
+3. AAD DMA-GHASH OVERLAP IN gcm.vhd  [WORKING - KEEP]
+
+   The DMA read for AAD block N+1 is issued while GHASH processes block N.
+   Signal aad_dma_inflight_r guards the exit from GCM_AAD_HASH to prevent
+   skipping the last AAD block (race bug found and fixed in commit 2fab746).
+   Logically correct.
+
+
+4. TRIPLE-CHANNEL CAST-256  [LOGICALLY CORRECT - KEEP, BUT WORSENS TIMING]
+
+   cast256.vhd: N_ENG changed from 2 to 3. New ch2 ports added.
+   gcm.vhd: triple_mode_r signal, GCM_GCTR_WAIT3, GCM_GCTR_LAST3 states.
+   When j0_ready_r='1' and pt_blk_rem_r > 2, all three channels encrypt
+   CB_n, CB_n+1, CB_n+2 simultaneously.
+
+   The third channel adds ~2,000 LUTs, pushing utilisation to ~83% and
+   worsening routing congestion. It compounds the forwarding timing violation
+   (from -3.7 ns with 2 channels to -9.4 ns with 3 channels) but is not
+   itself the root cause. Once forwarding is reverted, 3 channels with
+   ADDR→COMPUTE should meet timing (the design was at ~65% LUT with 2
+   channels and met timing; 83% with 3 channels and ADDR→COMPUTE should
+   still be within reach - needs verification by re-running synthesis).
+
+
+5. 32-BIT GHASH UNROLL IN gf128_mul.vhd  [WORKING - KEEP]
+
+   Loop unrolled from 16 to 32 iterations per cycle. Counter narrowed from
+   3-bit (0..7) to 2-bit (0..3). GF multiplication latency: 9 → 5 cycles.
+   GHASH block latency: 10 → 6 cycles. Critical path ~64 LUT levels ≈ 6–7 ns,
+   within the 10 ns budget. This change is independent of the forwarding
+   problem and is not part of the critical path.
+
+
+SYNTHESIS REPORT WARNING
+------------------------
+The file vhdl/crypto/synth/timing_summary.rpt is STALE. It was generated
+before the BRAM S-box fix and before forwarding was introduced. It shows
+only 2 enc instances and 0 RAMB18 for enc - do not use it.
+
+The full P&R build (commit 222356a, vivado_output.txt) gives the true picture:
+  - 16 RAMB18 confirmed (BRAM S-box inference works correctly)
+  - 9 DSPs confirmed (f-function DSP mapping works correctly)
+  - 3 enc instances confirmed (gen_enc[0], gen_enc[1], gen_enc[2])
+  - WNS = -9.4 ns, Fmax = 51.5 MHz (caused by forwarding, see item 1 above)
+
+After reverting forwarding (item 1), re-run OOC synthesis to verify timing:
+  vivado -mode batch -source tcl_files/synth_crypto.tcl
+
+
+EXPECTED PERFORMANCE AFTER THE REVERT
+--------------------------------------
+  Batch time (triple mode, ADDR→COMPUTE): 1 + ~97 + 6 + 6 = 110 cycles / 3 blocks
+  Effective throughput: ~36.7 cycles/block at 100 MHz
+
+  Comparison:
+    Original baseline (1 channel, 16-bit GHASH):  ~196 cycles/block   1x
+    After revert     (3 channels, 6-cycle GHASH):   ~36.7 cycles/block  5.3x
+
+  The GHASH unroll, triple-channel GCTR, dual-channel pairing, AAD overlap,
+  J0 precomputation, BRAM S-boxes, and DSP f-functions all contribute and
+  are all working correctly. Only the forwarding optimisation is removed.
+
+
+FILES MODIFIED THIS SESSION
+----------------------------
+  vhdl/crypto/cast256/cast256.vhd      N_ENG 2→3, ch2 ports, updated header
+  vhdl/crypto/cast256/cast256_enc.vhd  COMPUTE→COMPUTE forwarding (REVERT THIS)
+  vhdl/crypto/gcm/gcm.vhd              dual+triple channel, AAD overlap, bug fix
+  vhdl/crypto/gcm/gf128_mul.vhd       32-bit unroll
+  vhdl/crypto/gcm/ghash.vhd           updated latency comment only
+
+
+THINGS THAT ARE WORKING AND MUST NOT BE TOUCHED
+------------------------------------------------
+  - BRAM S-boxes on cast256_enc: ram_style="block" on SBOX1_r..SBOX4_r,
+    synchronous read in bram_read process (no reset on outputs). Confirmed
+    16 RAMB18 in full P&R build.
+
+  - DSP mapping on f1/f2/f3: use_dsp="yes" on the three concurrent signal
+    assignments (not on process-driven signals - Vivado ignores those).
+    Confirmed 9 DSPs in full P&R build.
+
+  - All GCM FSM states: WAIT2, WAIT3, LAST2, LAST3, AAD overlap,
+    aad_dma_inflight_r race fix, J0 cache (j0_ct_r, j0_ready_r).
+
+  - AXI slave, DMA engine, software driver - untouched this session.
